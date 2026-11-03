@@ -46,7 +46,7 @@ def _cap(Z, y, n, seed=0):
 
 
 def run_all(clean_dir, out_dir, budgets=(0, 10, 50, 100, 500), seeds=20, kind="logreg",
-            specs=None, max_source=200_000, c_fp=1.0, c_fn=10.0):
+            specs=None, max_source=200_000, c_fp=1.0, c_fn=10.0, da_methods=()):
     specs = specs or C.DEFAULT_SPECS
     os.makedirs(out_dir, exist_ok=True)
     data, Z, y, manifest = {}, {}, {}, {"concept_columns": {}, "model": kind, "seeds": seeds, "budgets": list(budgets)}
@@ -68,7 +68,8 @@ def run_all(clean_dir, out_dir, budgets=(0, 10, 50, 100, 500), seeds=20, kind="l
             for b in budgets:
                 for seed in range(seeds if b > 0 else 1):
                     for r in T.run_pair(Zs, ys, Z[t_key]["train"], y[t_key]["train"], Z[t_key]["test"],
-                                        y[t_key]["test"], b=b, seed=seed, kind=kind, c_fp=c_fp, c_fn=c_fn):
+                                        y[t_key]["test"], b=b, seed=seed, kind=kind, c_fp=c_fp, c_fn=c_fn,
+                                        da_methods=da_methods):
                         rows.append({"source": s_key, "target": t_key, **r.__dict__})
     res = pd.DataFrame(rows)
     res.to_csv(os.path.join(out_dir, "results.csv"), index=False)
@@ -92,8 +93,10 @@ def main():
     ap.add_argument("--budgets", nargs="+", type=int, default=[0, 10, 50, 100, 500])
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--model", default="logreg", choices=["logreg", "hgb"])
+    ap.add_argument("--da", nargs="*", default=[], choices=["dann", "lmmd", "dann_lmmd", "ft_l2sp"],
+                    help="also run NumPy domain-adaptation methods (unifraud/adapt.py)")
     a = ap.parse_args()
-    res, val = run_all(a.clean, a.out, a.budgets, a.seeds, a.model)
+    res, val = run_all(a.clean, a.out, a.budgets, a.seeds, a.model, da_methods=tuple(a.da))
     print(val.to_string(index=False))
     print(res.groupby(["source", "target", "method", "b"])[["ap_skill", "auc", "mcc"]].mean().round(3).to_string())
 

@@ -55,6 +55,7 @@ billing columns in the health-insurance features. The `unifraud/` package replac
 | `unifraud/concepts.py` | oriented z-score concept map (amount / counterparty / structure), train-only fit, concept-validity check |
 | `unifraud/transfer.py` | concept-space baselines: target-only, source-only (+ prior correction via BBSE/Saerens), pooled with up-weighted target labels, transfer gain |
 | `unifraud/metrics.py` | AP-skill, cost threshold, ECE, precision@k, bootstrap CI, Nadeau-Bengio corrected t-test, Holm |
+| `unifraud/adapt.py` | NumPy domain adaptation in the concept space: DANN (gradient reversal applied once), class-conditional multi-bandwidth MMD, L2-SP fine-tuning; analytic gradients verified by finite differences |
 | `scripts/run_transfer_baselines.py` | all six directed pairs x label budgets x seeds -> `outputs/transfer/*.csv` |
 
 ```bash
@@ -64,7 +65,7 @@ python scripts/prepare_data.py --data data --out outputs/clean
 python scripts/run_transfer_baselines.py --clean outputs/clean --out outputs/transfer
 ```
 
-The concept specs in `unifraud/concepts.py` are provisional: inspect `outputs/transfer/concept_validity.csv` and `manifest.json` (which columns fed each concept) before trusting any transfer number. DANN, class-conditional MMD and the gated network are not yet implemented.
+The concept specs in `unifraud/concepts.py` are provisional: inspect `outputs/transfer/concept_validity.csv` and `manifest.json` (which columns fed each concept) before trusting any transfer number. DANN, class-conditional MMD and L2-SP fine-tuning are implemented in NumPy (`--da dann lmmd dann_lmmd ft_l2sp`); the attention-gated network and PyTorch versions are not yet implemented, and no result on real data has been produced.
 
 Downstream notebooks (04-08) have **not** yet been migrated to `outputs/clean`; results from the old
 notebooks should not be cited. See `paper/REVISION_NOTES.md` (branch `claude/paper-draft`) for the full defect list.

@@ -13,6 +13,7 @@ All thresholds come from calibrated posteriors and costs (Prop. cost), never fro
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -106,7 +107,8 @@ def sample_budget(y_train: np.ndarray, b: int, seed: int) -> np.ndarray:
 
 def run_pair(Zs, ys, Zt_train, yt_train, Zt_test, yt_test, *, b: int, seed: int,
              kind: str = "logreg", c_fp: float = 1.0, c_fn: float = 10.0,
-             target_weight: float | None = None, prior_correct: bool = True):
+             target_weight: float | None = None, prior_correct: bool = True,
+             da_methods: Sequence[str] = (), da_iters: int = 300):
     """Evaluate target_only / source_only / pooled at budget ``b`` on the fixed target TEST set.
 
     Zs, Zt_*: DataFrames/arrays in the shared concept space. Returns a list of PairResult.
@@ -135,6 +137,22 @@ def run_pair(Zs, ys, Zt_train, yt_train, Zt_test, yt_test, *, b: int, seed: int,
         p_src = saerens_correct(p_src, pi_s, pi_hat)
     out.append(_score(yt_test, p_src, tau, c_fp, c_fn, "source_only", b, seed, pi_hat))
 
+    # domain-adaptation baselines (NumPy models, unlabelled target features only; opt-in)
+    if da_methods:
+        from . import adapt as AD
+        for meth in da_methods:
+            if meth == "ft_l2sp":
+                continue                                           # handled below (needs target labels)
+            am = AD.AdaptModel(Zs.shape[1], 16, seed=seed)
+            am.fit_adapt(Zs[i_fit], ys[i_fit], Zt_train, method=meth, iters=da_iters, batch=128)
+            p = am.calibrate(am.predict_proba(Zt_test))
+            pi_h = None
+            if prior_correct:
+                yhat_val = (am.calibrate(am.predict_proba(Zs[i_val])) >= 0.5).astype(int)
+                pi_h = bbse_prior(ys[i_val], yhat_val, (p >= 0.5).astype(int), pi_s)
+                p = saerens_correct(p, pi_s, pi_h)
+            out.append(_score(yt_test, p, tau, c_fp, c_fn, meth, b, seed, pi_h))
+
     if b > 0:
         sel = sample_budget(yt_train, b, seed)
         Zb, yb = Zt_train[sel], yt_train[sel]
@@ -154,6 +172,12 @@ def run_pair(Zs, ys, Zt_train, yt_train, Zt_test, yt_test, *, b: int, seed: int,
             pi_pool = float(np.average(y, weights=sw))
             p_pool = saerens_correct(p_pool, pi_pool, pi_b)
         out.append(_score(yt_test, p_pool, tau, c_fp, c_fn, "pooled", b, seed))
+        if "ft_l2sp" in da_methods and len(np.unique(yb)) == 2:
+            from . import adapt as AD
+            base = AD.AdaptModel(Zs.shape[1], 16, seed=seed).fit_source(Zs[i_fit], ys[i_fit], iters=da_iters)
+            base.finetune(Zb, yb, eta=1.0, iters=150)
+            p_ft = base.calibrate(base.predict_proba(Zt_test))
+            out.append(_score(yt_test, p_ft, tau, c_fp, c_fn, "ft_l2sp", b, seed))
     return out
 
 

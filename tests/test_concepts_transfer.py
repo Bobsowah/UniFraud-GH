@@ -184,3 +184,15 @@ def test_runner_smoke(tmp_path):
         assert os.path.exists(tmp_path / "out" / f)
     m = json.load(open(tmp_path / "out" / "manifest.json"))
     assert m["concept_columns"]["HI"]["amount_anomaly"] == []
+
+
+def test_run_pair_with_adaptation_methods():
+    data = synth.make_all(seed=21, n=1500)
+    Zs, ys = _Z(data["MM"], "MM")[1], data["MM"].fraud_label.to_numpy()
+    Zt = C.ConceptMap(C.DEFAULT_SPECS["CC"]).fit_transform(data["CC"].drop(columns="fraud_label"))
+    yt = data["CC"].fraud_label.to_numpy()
+    res = T.run_pair(Zs, ys, Zt.iloc[:900], yt[:900], Zt.iloc[900:], yt[900:], b=40, seed=0,
+                     da_methods=("dann", "lmmd", "dann_lmmd", "ft_l2sp"), da_iters=60)
+    methods = {r.method for r in res}
+    assert {"source_only", "target_only", "pooled", "dann", "lmmd", "dann_lmmd", "ft_l2sp"} <= methods
+    assert all(0.0 <= r.ece <= 1.0 for r in res)
