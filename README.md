@@ -52,12 +52,19 @@ billing columns in the health-insurance features. The `unifraud/` package replac
 | `unifraud/splits.py` | chronological (CC, MM) and patient-grouped (HI) splits |
 | `unifraud/preprocess.py` | train-only fit: winsorise, robust-scale, out-of-fold target encoding, time features |
 | `scripts/prepare_data.py` | end-to-end preparation -> `outputs/clean/*.csv` + manifests |
+| `unifraud/concepts.py` | oriented z-score concept map (amount / counterparty / structure), train-only fit, concept-validity check |
+| `unifraud/transfer.py` | concept-space baselines: target-only, source-only (+ prior correction via BBSE/Saerens), pooled with up-weighted target labels, transfer gain |
+| `unifraud/metrics.py` | AP-skill, cost threshold, ECE, precision@k, bootstrap CI, Nadeau-Bengio corrected t-test, Holm |
+| `scripts/run_transfer_baselines.py` | all six directed pairs x label budgets x seeds -> `outputs/transfer/*.csv` |
 
 ```bash
 pip install -r requirements.txt
 python -m pytest tests            # unit tests (synthetic data)
 python scripts/prepare_data.py --data data --out outputs/clean
+python scripts/run_transfer_baselines.py --clean outputs/clean --out outputs/transfer
 ```
+
+The concept specs in `unifraud/concepts.py` are provisional: inspect `outputs/transfer/concept_validity.csv` and `manifest.json` (which columns fed each concept) before trusting any transfer number. DANN, class-conditional MMD and the gated network are not yet implemented.
 
 Downstream notebooks (04-08) have **not** yet been migrated to `outputs/clean`; results from the old
 notebooks should not be cited. See `paper/REVISION_NOTES.md` (branch `claude/paper-draft`) for the full defect list.
