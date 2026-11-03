@@ -7,6 +7,10 @@
 \usepackage{xcolor}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,shapes.geometric,calc}
 \usepackage[hidelinks]{hyperref}
 \usepackage{cite}
 
@@ -14,6 +18,7 @@
 \newtheorem{proposition}{Proposition}
 \newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
 \newtheorem{remark}{Remark}
 
 \newcommand{\TBD}{\textcolor{red}{\textbf{TBD}}}
@@ -29,47 +34,154 @@
 \DeclareMathOperator{\logit}{logit}
 \DeclareMathOperator{\MMD}{MMD}
 \DeclareMathOperator{\JS}{JS}
+\DeclareMathOperator{\TPR}{TPR}
+\DeclareMathOperator{\FPR}{FPR}
 
 \begin{document}
 
-\title{UniFraud-GH: Semantic Concept Alignment and Domain-Adaptive Learning for Cross-Sector Fraud Detection in Ghana}
+\title{UniFraud-GH: Semantic Concept Alignment and Prior-Aware Domain Adaptation for Cross-Sector Fraud Detection in Ghana}
 
 \author{Robert~A.~Sowah and Sedem~Agudetse% VERIFY author list, order, affiliations
-\thanks{Manuscript draft \today. Numerical results in Section~\ref{sec:results} are placeholders (\TBD) pending re-execution of the corrected, leakage-free protocol of Section~\ref{sec:protocol}.}}
+\thanks{Manuscript draft \today. Numerical results in Section~\ref{sec:results} are placeholders (\TBD) pending re-execution of the corrected, leakage-free protocol of Section~\ref{sec:protocol}. Reference details were located through search records and must be checked against publisher records before submission.}}
 
 \markboth{DRAFT FOR IEEE/ACM JOURNAL SUBMISSION}{UniFraud-GH}
 \maketitle
 
 \begin{abstract}
-Financial fraud in Ghana spans payment cards, mobile money and national health insurance, yet labelled data exist in useful quantity in at most one sector at a time. We study \emph{heterogeneous cross-sector transfer} for fraud detection: a classifier trained where labels are plentiful is adapted to a sector where they are scarce, even though the sectors share neither features nor class priors. We contribute (i) a \emph{semantic concept alignment} that maps each sector's schema into a shared three-dimensional ``fraud-concept'' space (amount anomaly, counterparty risk, structural distance) through a z-score--average operator whose scale-invariance and sign-orientation properties we prove; (ii) a unified formulation of three adaptation strategies---domain-adversarial training (DANN), class-conditional subdomain MMD alignment, and an attention-gated network with source pre-training and target fine-tuning (HEN)---together with an analysis, based on a Jensen--Shannon lower bound on joint error, of why invariant-representation methods are expected to fail under the extreme label shift between sectors (0.52\% vs.\ 54.8\% fraud); (iii) a leakage-free, label-budget-aware evaluation protocol with calibrated thresholds, resampling-corrected significance tests and Holm correction; and (iv) a formal audit of rule-generated labels, showing that benchmark scores on rule-labelled claims measure rule reproduction rather than fraud detection unless the rule inputs are excluded. The mathematical development is complete; empirical claims are deferred to a corrected re-run.
+Financial fraud in Ghana spans payment cards, mobile money and national health insurance, yet labelled data exist in useful quantity in at most one sector at a time. Prior transfer-learning work in fraud detection moves models between countries, banks or markets that share one schema and one sector; to our knowledge, and within the searches we ran, no study transfers fraud knowledge \emph{across sectors} whose feature spaces and fraud priors both differ. We formalise this \emph{heterogeneous cross-sector transfer} problem and contribute: (i) a \emph{semantic concept alignment} that maps each sector's schema into a shared three-dimensional ``fraud-concept'' space (amount anomaly, counterparty risk, structural distance) through an oriented z-score--average operator, with proofs of unit-invariance, orientation consistency and a Bayes-risk monotonicity result that quantifies what alignment can lose; (ii) a unified formulation of three adaptation strategies---domain-adversarial training, class-conditional subdomain MMD, and an attention-gated pre-train/fine-tune network---together with a closed-form Jensen--Shannon lower bound showing that marginal-invariance methods cannot succeed under the extreme label shift between sectors (0.52\% vs.\ 54.8\% fraud), and a label-shift correction that restores consistency; (iii) a derivation of the optimal weighting of scarce target labels against source data, and of the sector-specific false-positive budgets implied by operating-point arithmetic; (iv) a leakage-free, label-budget-aware protocol with resampling-corrected significance tests; and (v) a formal audit of rule-generated labels, showing that benchmark scores on rule-labelled claims measure rule reproduction unless the rule inputs are excluded. The mathematical development is complete; empirical claims are deferred to a corrected re-run.
 \end{abstract}
 
 \begin{IEEEkeywords}
-fraud detection, domain adaptation, transfer learning, class imbalance, maximum mean discrepancy, mobile money, health insurance, explainable AI.
+fraud detection, domain adaptation, transfer learning, label shift, class imbalance, maximum mean discrepancy, mobile money, health insurance, explainable AI.
 \end{IEEEkeywords}
 
+%=======================================================================
 \section{Introduction}
-\IEEEPARstart{F}{raud} in Ghana's financial ecosystem is not confined to one channel. Card-not-present attacks, mobile-money social engineering and insurance-claim padding are carried out by overlapping populations of actors using recurring behavioural tactics: abnormal amounts, exploitation of weakly-vetted counterparties, and structural irregularities in time, geography or billing. Labelled examples are nevertheless siloed and uneven: card fraud is abundant but extremely rare per transaction, mobile-money simulators produce balanced traffic, and insurance claims are few and labelled mainly by tariff rules.
+\IEEEPARstart{F}{raud} in Ghana's financial ecosystem is not confined to one channel. Card-not-present attacks, mobile-money social engineering and insurance-claim padding are carried out by overlapping populations of actors using recurring behavioural tactics: abnormal amounts, exploitation of weakly-vetted counterparties, and structural irregularities in time, geography or billing. Labelled examples are nevertheless siloed and uneven: card fraud is abundant but extremely rare per transaction, mobile-money simulators produce balanced traffic, and insurance claims are few and labelled mainly by tariff rules \cite{sowah2019dss,azamuke2022momtsim}.
 
-This situation calls for transfer across heterogeneous domains with different feature spaces $\Xspace_k$ \emph{and} different label priors. Two facts make it hard. First, conventional domain adaptation presupposes a common input space; second, even with a common representation, invariant-representation learning provably cannot help---and can hurt---when $p_S(y)\neq p_T(y)$ \cite{zhao2019invariant}. We therefore build the problem from the ground up and keep every claim tied to a statement that can be proved or tested.
+This situation calls for transfer across \emph{heterogeneous} domains: different feature spaces $\Xspace_k$ \emph{and} different label priors $\pi_k$. Two facts make it hard. First, conventional domain adaptation presupposes a common input space. Second, even with a common representation, invariant-representation learning provably cannot help---and can hurt---when the label marginals differ \cite{zhao2019invariant}. Existing fraud-transfer studies sidestep both difficulties by transferring between countries, markets or banks that share a schema \cite{lebichot2021transfer,siblini2021transfer,zhu2020hen,pereira2025evaluating,zheng2020federated}. The cross-sector problem is therefore not an incremental variation but a different statistical setting, which we study from first principles and keep tied to claims that can be proved or tested.
 
-\paragraph*{Contributions}
+\subsection*{Contributions and novelty}
 \begin{enumerate}
-\item \textbf{Semantic concept alignment} (Section~\ref{sec:align}): a schema-to-concept operator $\phi_k:\R^{d_k}\to\R^3$ with proofs of affine invariance and orientation consistency (Prop.~\ref{prop:align}).
-\item \textbf{Unified adaptation formulation} (Section~\ref{sec:da}): DANN, class-conditional subdomain MMD and HEN expressed as instances of one objective, with the saddle-point characterisation of the gradient-reversal layer (Prop.~\ref{prop:grl}) and a label-shift lower bound (Prop.~\ref{prop:labelshift}) evaluated on the actual priors of our three sectors.
-\item \textbf{Prior-aware decision theory} (Section~\ref{sec:imbalance}): exact relations between weighted loss, resampling and the Bayes-optimal cost-sensitive threshold (Props.~\ref{prop:weight} and~\ref{prop:cost}).
-\item \textbf{Leakage-free evaluation} (Section~\ref{sec:protocol}) including a formal audit of rule-generated labels (Section~\ref{sec:labels}, Prop.~\ref{prop:circ}).
+\item \textbf{Problem and positioning.} We define heterogeneous cross-sector fraud transfer (Definition~\ref{def:problem}) and show, through a systematic comparison (Table~\ref{tab:related}), that the surveyed fraud-transfer literature assumes a shared schema and a single sector. This is the \emph{cross-domain application} novelty: card, mobile-money and health-insurance fraud are connected through a common behavioural vocabulary rather than a common table.
+\item \textbf{Semantic concept alignment} (Section~\ref{sec:align}). A schema-to-concept operator $\phi_k:\R^{d_k}\to\R^3$ with proofs of unit-invariance and orientation consistency (Prop.~\ref{prop:align}) and a Bayes-risk monotonicity result (Prop.~\ref{prop:bayes}) that states exactly when alignment is lossless.
+\item \textbf{Prior-aware adaptation theory} (Sections~\ref{sec:da},~\ref{sec:theory}). A unified objective for DANN, class-conditional MMD and fine-tuning; the saddle-point characterisation of gradient reversal (Prop.~\ref{prop:grl}); a closed-form Jensen--Shannon lower bound evaluated on the actual priors of the three sectors (Prop.~\ref{prop:labelshift}, Table~\ref{tab:jsbound}); a label-shift correction and a black-box prior estimator (Props.~\ref{prop:saerens},~\ref{prop:bbse}); the optimal labelled-target weighting (Prop.~\ref{prop:mix}); and a bandwidth analysis of the MMD criterion (Prop.~\ref{prop:mmdbw}).
+\item \textbf{Prior-aware decision theory and operating points} (Sections~\ref{sec:imbalance},~\ref{sec:oppoint}). Exact relations among weighted loss, resampling and the Bayes-optimal threshold (Props.~\ref{prop:weight},~\ref{prop:cost}), and the sector-specific false-positive budgets implied by prevalence (Prop.~\ref{prop:prec}), which explain why a single metric is not comparable across sectors.
+\item \textbf{Leakage-free protocol and label audit} (Sections~\ref{sec:labels},~\ref{sec:protocol}). A formal account of rule-label circularity and of a missing-data artefact in the health-insurance rules (Props.~\ref{prop:circ},~\ref{prop:missing}), with a transfer-gain metric that isolates transfer from supervision.
 \end{enumerate}
 
-\section{Related Work}
-\textbf{Fraud detection.} Supervised gradient-boosted trees remain the strongest baseline on tabular fraud data \cite{grinsztajn2022trees,chen2016xgboost}, with unsupervised detectors such as isolation forests \cite{liu2008iforest} and autoencoders used when labels are unavailable. Realistic evaluation must respect temporal drift and label delay \cite{dalpozzolo2014creditcard}.
-\textbf{Domain adaptation.} Theory goes back to the $\Hspace\Delta\Hspace$-divergence bound \cite{bendavid2010theory}; practical methods align features adversarially \cite{ganin2016dann,tzeng2017adda}, by kernel moment matching \cite{long2015dan,gretton2012kernel}, by second-order statistics \cite{sun2016coral}, or class-conditionally \cite{zhu2021dsan}. Surveys appear in \cite{panyang2010survey}. Learning invariant representations under label shift is limited by the bound of \cite{zhao2019invariant}.
-\textbf{Evaluation hygiene.} Target leakage \cite{kaufman2012leakage}, resampling-induced optimism, and unreliable significance tests on cross-validation folds \cite{nadeau2003inference} are common causes of irreproducible results; model selection for unsupervised adaptation must not use target labels \cite{you2019dev}.
+%=======================================================================
+\section{Related Work}\label{sec:related}
+We organise the literature by the question each strand answers, and close with a positioning that states what is, and is not, new. All claims of absence are qualified: they rest on the searches we ran and not on an exhaustive survey.
 
+\subsection{Fraud detection in the three sectors}
+\textbf{Credit cards.} Practical card-fraud systems face concept drift, extreme imbalance and \emph{verification latency}: investigators label only a few alerts quickly, and the remaining labels arrive late. Dal Pozzolo et al.\ \cite{dalpozzolo2018realistic} formalise this setting and train separate classifiers on feedback and on delayed samples, validating on over $75$ million real transactions; Carcillo et al.\ \cite{carcillo2018scarff} describe a streaming Spark architecture for the same regime. Both are card-specific, proprietary, and say nothing about portability to other products. Graph-based methods add relational structure within a sector \cite{xiang2023gtan}, but a card-merchant graph has no direct analogue in mobile money or claims, and on a Bitcoin benchmark random forests outperformed graph convolutional networks \cite{weber2019elliptic}, cautioning against assuming that structure beats strong tabular baselines. Unsupervised detectors such as isolation forests \cite{liu2008iforest} need no labels but assume that fraud is rare \emph{and} different, and their scores are not comparable across domains.
+
+\textbf{Mobile money.} Public mobile-money data are scarce because transactions are sensitive, so the field relies on agent-based simulators: PaySim, calibrated on logs from an African mobile-money service \cite{lopezrojas2016paysim}, and MoMTSim, which adds Sub-Saharan fraud scenarios such as SIM swap and account takeover \cite{azamuke2022momtsim,azamuke2025dataset,azamuke2025rich}. Comparative studies of SVMs, boosted trees and naive Bayes on mobile-money fraud \cite{botchey2020mobile} and of logistic regression, random forests and XGBoost on MoMTSim \cite{azamuke2025rich} are single-sector and, for the latter, entirely simulated. Dataset notes for PaySim warn that balance columns leak the label, and MoMTSim fidelity is judged on marginal statistics, which says little about whether fraud \emph{structure} transfers.
+
+\textbf{Health insurance.} The Ghanaian National Health Insurance claims literature is thin. Sowah et al.\ \cite{sowah2019dss} use a genetic-algorithm-tuned SVM on real claims and report accuracy of $80$--$88\%$; accuracy is a weak headline metric under imbalance, and we found no independent replication, temporal evaluation, or link to other sectors. International medical-claims fraud is outside our verified searches.
+
+\subsection{Synthetic data and realistic evaluation}
+Because two of our three sectors are simulated, evaluation hygiene is central. Altman et al.\ \cite{altman2023realistic} show how a transaction generator's assumptions should be documented, and Jordon et al.\ \cite{jordon2022synthetic} survey what synthetic data can and cannot support; Grover et al.\ \cite{grover2022fdb} and Jesus et al.\ \cite{jesus2022turning} provide public fraud benchmarks with standardised splits, drift and injected bias, though each is single-domain. Data leakage---preprocessing, encoding or selection fitted before splitting, or features derived from labelling rules---is a documented cause of irreproducible results across fields \cite{kapoor2023leakage,kaufman2012leakage}, and high-cardinality target encoding is a classic channel \cite{micci2001target}. Resampling distorts posterior probabilities \cite{chawla2002smote,dalpozzolo2015calibrating}, so thresholds must be set on unresampled validation data. For imbalanced metrics, precision--recall analysis is more informative than ROC \cite{saito2015pr} and MCC is more robust than $F_1$ or accuracy \cite{chicco2020mcc}; both depend on prevalence, which differs by two orders of magnitude across sectors (Prop.~\ref{prop:prec}). Statistical comparison requires corrections for the dependence of resampled estimates \cite{nadeau2003inference}, non-parametric or Bayesian alternatives \cite{demsar2006statistical,benavoli2017time}, and multiplicity control \cite{holm1979simple}.
+
+\subsection{Transfer learning in fraud detection}\label{sec:rwtransfer}
+Transfer in fraud has been studied where source and target share a feature schema. Lebichot et al.\ \cite{lebichot2021transfer} compare $15$ transfer strategies across European countries on over $200$ million e-commerce card transactions and propose a semi-supervised domain-adaptation ensemble that is largely insensitive to the number of target labels; Siblini et al.\ \cite{siblini2021transfer} report the same programme taken to production. Zhu et al.\ \cite{zhu2020hen} propose a Hierarchical Explainable Network (HEN) over user behaviour sequences with a transfer framework from mature to new cross-border markets; ``domain'' there means country or market within one platform and sequence format. Pereira et al.\ \cite{pereira2025evaluating} evaluate transfer methods on bank-account-fraud streams under drift, again with a shared schema, and federated meta-learning lets banks with a common feature space collaborate without pooling data \cite{zheng2020federated}. Transfer \emph{between} fraud sectors with different schemas was not found in these searches; Section~\ref{sec:positioning} states the resulting claim carefully. The terminology also needs care: our attention-gated network is an \emph{adaptation} of the HEN idea of \cite{zhu2020hen}, and it is not their hierarchical sequence model.
+
+\subsection{Domain-adaptation theory and methods}
+The foundational bound of Ben-David et al.\ \cite{bendavid2010theory} limits target error by source error, the $\Hspace\Delta\Hspace$-divergence between marginals, and a joint-optimal error $\lambda^\star$ (Eq.~\eqref{eq:bendavid}); Mansour et al.\ \cite{mansour2009domain} generalise to arbitrary losses through the discrepancy distance, which is estimable from unlabelled data. Practical methods fall into adversarial and kernel families. DANN \cite{ganin2016dann} trains features to confuse a domain discriminator through gradient reversal, ADDA \cite{tzeng2017adda} separates source and target encoders, and CDAN \cite{long2018cdan} conditions the discriminator on classifier predictions to align joint structure. Kernel methods match moments: DAN \cite{long2015dan} minimises multi-kernel MMD \cite{gretton2012kernel} across layers, CORAL \cite{sun2016coral} matches second-order statistics, optimal transport \cite{courty2017ot} learns a mass-preserving map (problematic when class masses differ), and subdomain methods \cite{zhu2021dsan} match class-conditional distributions with local MMD. Surveys are in \cite{panyang2010survey}.
+
+\subsection{Label shift, heterogeneity and negative transfer}
+Cross-sector fraud transfer is dominated by two issues that most methods above do not treat. \emph{Label shift}: Zhao et al.\ \cite{zhao2019invariant} prove an information-theoretic lower bound showing that exact marginal invariance \emph{forces} error when label marginals differ, motivating methods that estimate and correct the prior \cite{saerens2002adjusting,lipton2018bbse}, that handle target and conditional shift jointly through kernel embeddings \cite{zhang2013target}, or that match conditionals under \emph{generalised} label shift \cite{tachet2020gls}; Johansson et al.\ \cite{johansson2019support} add that the aligning map must remain invertible on the support. \emph{Heterogeneity}: shared-space methods require a common input dimension; heterogeneous feature augmentation \cite{duan2012hfa} learns projections into a common subspace but needs target labels and offers no guarantee that the subspace is semantically shared. Schema-matching benchmarks \cite{koutras2020valentine} match columns by name and value overlap, not by shared latent concepts. \emph{Negative transfer}: transfer can hurt, and a no-transfer baseline must be reported \cite{wang2019negative}; TableShift \cite{gardner2023tableshift} finds that tabular distribution-shift gaps are strongly associated with label shift and that gradient-boosted trees remain strong baselines. Model selection without target labels is unreliable under large prior mismatch \cite{you2019dev}, and regularised fine-tuning toward pre-trained weights \cite{li2018l2sp} is a sensible few-label default.
+
+\subsection{Tabular learners, explanation and weak labels}
+Gradient-boosted trees \cite{chen2016xgboost} and random forests \cite{breiman2001rf} remain the default for tabular data \cite{grinsztajn2022trees,borisov2024deep}, with competitive deep alternatives \cite{gorishniy2021revisiting} and, for small samples such as our $2\,655$ claims, tabular foundation models \cite{hollmann2025tabpfn}; stacked generalisation \cite{wolpert1992stacked} combines them. Explanations are expected in financial decisions \cite{goodman2017gdpr}: SHAP \cite{lundberg2017shap,lundberg2020trees} and LIME \cite{ribeiro2016lime} are standard, but Shapley importances have known conceptual limits \cite{kumar2020shapley} and perturbation-based explainers can be fooled off the data manifold \cite{slack2020fooling}, which matters when aligned features are off-manifold. Fairness surveys \cite{mehrabi2021bias} note that protected attributes may be present in one schema and absent in another. Fraud rules are natural \emph{labelling functions} for weak supervision \cite{ratner2016dataprogramming,ratner2017snorkel}, and noisy-label learning \cite{song2022noisy} applies, but fraud label noise is class-dependent (missed fraud is labelled legitimate) and, in our rule-labelled claims, driven by missing data (Prop.~\ref{prop:missing}).
+
+\subsection{Critical synthesis of the most relevant studies}\label{sec:synthesis}
+Table~\ref{tab:review} condenses what each closely related study establishes and what it cannot tell us about cross-sector transfer. Three patterns emerge. First, \emph{every fraud-transfer result we found fixes the schema}: gains from adaptation \cite{lebichot2021transfer,siblini2021transfer,zhu2020hen,pereira2025evaluating,zheng2020federated} come from correcting covariate or temporal shift inside one product line, so they do not bear on whether behavioural knowledge survives a change of sector. Second, \emph{the theory that does cover our setting is negative}: with differing priors and non-shared conditionals, bounds are vacuous unless the joint error $\lambda^\star$ is small \cite{bendavid2010theory,mansour2009domain,zhao2019invariant}, and heterogeneous-feature methods lack semantic guarantees \cite{duan2012hfa}. Third, \emph{the evaluation practices that would expose this are rarely applied}: target-only baselines and negative-transfer gaps \cite{wang2019negative}, prevalence-aware metrics \cite{saito2015pr}, and leakage controls \cite{kapoor2023leakage} are absent from most applied fraud studies, and benchmark shift studies find that label shift dominates the gap \cite{gardner2023tableshift}. These three patterns define the design requirements of Section~\ref{sec:method}.
+
+\begin{table*}[t]
+\centering
+\caption{What closely related studies establish, and what they leave open for cross-sector fraud transfer.}
+\label{tab:review}
+\scriptsize
+\begin{tabular}{@{}p{3.1cm}p{5.6cm}p{6.8cm}@{}}
+\toprule
+Study & Establishes & Limitation relative to our setting \\
+\midrule
+Dal Pozzolo et al.\ \cite{dalpozzolo2018realistic} & Realistic card-FDS model: feedback vs.\ delayed labels, drift, imbalance; real data at scale & Card-only, proprietary; transfer not addressed \\
+Lebichot et al.\ \cite{lebichot2021transfer} & Semi-supervised DA across countries is competitive and insensitive to number of target labels & Same schema and sector; no prior-shift analysis \\
+Siblini et al.\ \cite{siblini2021transfer} & Research-to-production path for cross-country card transfer, $\sim$15\% gain over zero-shot & Homogeneous features; proprietary \\
+Zhu et al.\ \cite{zhu2020hen} & Hierarchical explainable network and transfer across markets of one platform & ``Domain'' = market; behaviour sequences, not tabular cross-sector \\
+Pereira et al.\ \cite{pereira2025evaluating} & Framework to evaluate transfer under drift with scarce target labels & Shared bank-account schema \\
+Zheng et al.\ \cite{zheng2020federated} & Federated meta-learning without pooling bank data & Common feature space \\
+Botchey et al.\ \cite{botchey2020mobile}; Azamuke et al.\ \cite{azamuke2025rich} & Classical ML comparisons for mobile-money fraud, simulated data (MoMTSim) & Single sector; generator-defined fraud \\
+Sowah et al.\ \cite{sowah2019dss} & Real Ghana NHIS claims fraud model (GSVM), accuracy 80--88\% & Accuracy metric, single sector, no replication \\
+Zhao et al.\ \cite{zhao2019invariant} & Lower bound: invariance + label shift $\Rightarrow$ error & Not applied to fraud priors before this work \\
+Tachet des Combes et al.\ \cite{tachet2020gls} & Conditional matching + class reweighting under generalised label shift & Needs target class weights; heterogeneity not addressed \\
+Duan et al.\ \cite{duan2012hfa} & Projections for heterogeneous feature spaces & Needs target labels; no semantic-sharing guarantee; no prior shift \\
+Gardner et al.\ \cite{gardner2023tableshift} & Tabular shift benchmark: label shift drives gap; GBDTs strong & Shared schema; no fraud sectors \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Positioning and novelty}\label{sec:positioning}
+\begin{table*}[t]
+\centering
+\caption{Positioning against the closest related work. ``Schema'' = whether source and target share a feature schema. ``Prior shift'' = whether differing fraud priors are analysed.}
+\label{tab:related}
+\small
+\begin{tabular}{@{}p{3.6cm}p{2.6cm}p{3.2cm}p{1.5cm}p{1.5cm}p{3.3cm}@{}}
+\toprule
+Work & Sector(s) & Setting & Schema & Prior shift & Data \\
+\midrule
+Dal Pozzolo et al.\ \cite{dalpozzolo2018realistic} & card & drift, label latency & single & no & real, proprietary \\
+Lebichot et al.\ \cite{lebichot2021transfer} & card & cross-country DA & shared & no & real, proprietary \\
+Siblini et al.\ \cite{siblini2021transfer} & card & cross-country, production & shared & no & real, proprietary \\
+Zhu et al.\ (HEN) \cite{zhu2020hen} & e-commerce card & cross-market, sequences & shared & no & real \\
+Pereira et al.\ \cite{pereira2025evaluating} & bank accounts & streaming transfer & shared & no & real + public BAF \\
+Zheng et al.\ \cite{zheng2020federated} & card & federated meta-learning & shared & no & real \\
+Azamuke et al.\ \cite{azamuke2025rich} & mobile money & single-sector ML & single & no & simulated \\
+Botchey et al.\ \cite{botchey2020mobile} & mobile money & model comparison & single & no & see paper \\
+Sowah et al.\ \cite{sowah2019dss} & health insurance & GSVM & single & no & real, Ghana NHIS \\
+Duan et al.\ \cite{duan2012hfa} (general) & --- & heterogeneous DA & different & no & vision/text \\
+\textbf{This work} & \textbf{card, mobile money, health ins.} & \textbf{cross-sector transfer} & \textbf{different} & \textbf{yes (analysed, corrected)} & \textbf{2 simulated + 1 real} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:related} summarises the comparison. \emph{To our knowledge, and within the searches we ran}, the new elements are: (a) the \textbf{cross-sector setting} itself---transfer among card, mobile-money and health-insurance fraud with different schemas; (b) \textbf{concept-space alignment} through a documented, orientation-aware operator that connects heterogeneous schemas by shared fraud concepts rather than by columns \cite{koutras2020valentine} or learned projections \cite{duan2012hfa}; (c) the \textbf{prior-shift analysis} that quantifies, from the actual sector prevalences, which transfer directions invariance methods cannot succeed in, with the corrective machinery; (d) a \textbf{label audit and leakage-free protocol} for rule-labelled claims; and (e) a \textbf{transfer-gain metric} defined against a target-only baseline trained on the same labels. The individual components (DANN, MMD, fine-tuning, SHAP) are standard; the contribution is their principled composition for a setting where the standard assumptions fail, together with a proof-backed account of \emph{why} and \emph{where}. We do not claim priority beyond the evidence above; a Scopus/IEEE Xplore/ACM DL search should be rerun before submission.
+
+%=======================================================================
 \section{Problem Formulation}\label{sec:problem}
-Let $k\in\mathcal K=\{\mathrm{CC},\mathrm{MM},\mathrm{HI}\}$ index sectors (credit card, mobile money, health insurance). Sector $k$ has a feature space $\Xspace_k\subseteq\R^{d_k}$, label space $\mathcal Y=\{0,1\}$ (1 = fraud), and joint distribution $\mathcal D_k$ over $\Xspace_k\times\mathcal Y$. A labelled sample $\mathcal S_k=\{(x_i,y_i)\}_{i=1}^{n_k}\sim\mathcal D_k^{n_k}$ is available, with prior $\pi_k=\Prob_{\mathcal D_k}(Y=1)$.
+\begin{table}[t]
+\centering
+\caption{Notation.}
+\label{tab:notation}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$k\in\{\mathrm{CC},\mathrm{MM},\mathrm{HI}\}$ & sector (card, mobile money, health ins.) \\
+$\Xspace_k\subseteq\R^{d_k}$, $\mathcal D_k$ & feature space and joint law of sector $k$ \\
+$\pi_k=\Prob_{\mathcal D_k}(Y{=}1)$ & fraud prior \\
+$\phi_k:\R^{d_k}\to\R^3$ & concept map (Eq.~\eqref{eq:concept}) \\
+$G_f,G_y,G_d$ & feature extractor, label head, domain head \\
+$\varepsilon_k(h)$ & $0$--$1$ error of $h$ under $\mathcal D_k$ \\
+$d_{\Hspace\Delta\Hspace}$ & $\Hspace\Delta\Hspace$-divergence \\
+$\lambda^\star$ & joint-optimal error (Eq.~\eqref{eq:bendavid}) \\
+$\omega$ & positive-class weight; $q$ = weighted posterior \\
+$b$ & number of labelled target examples \\
+$\JS,\ d_{\JS}$ & Jensen--Shannon divergence ($\log_2$), distance \\
+$\widehat{\MMD}^2$ & biased squared MMD estimator \\
+$\TPR,\FPR$ & true / false positive rate \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{definition}[Heterogeneous transfer problem]
+Let $k\in\mathcal K=\{\mathrm{CC},\mathrm{MM},\mathrm{HI}\}$ index sectors. Sector $k$ has a feature space $\Xspace_k\subseteq\R^{d_k}$, label space $\mathcal Y=\{0,1\}$ (1 = fraud), and joint distribution $\mathcal D_k$ over $\Xspace_k\times\mathcal Y$. A labelled sample $\mathcal S_k=\{(x_i,y_i)\}_{i=1}^{n_k}\sim\mathcal D_k^{n_k}$ is available, with prior $\pi_k=\Prob_{\mathcal D_k}(Y=1)$ (notation in Table~\ref{tab:notation}).
+
+\begin{definition}[Heterogeneous cross-sector transfer]\label{def:problem}
 Given a source sector $s$ and a target sector $t\neq s$ with $\Xspace_s\neq\Xspace_t$ and $\pi_s\neq\pi_t$, together with a \emph{label budget} $b\in\{0\}\cup\mathbb N$ of target labels ($b=0$: unsupervised adaptation), find a predictor $h:\Xspace_t\to[0,1]$ minimising the target risk $R_t(h)=\E_{(x,y)\sim\mathcal D_t}\,\ell(h(x),y)$ using $\mathcal S_s$, the unlabelled target features, and at most $b$ target labels.
 \end{definition}
 
@@ -78,12 +190,36 @@ For a hypothesis class $\Hspace$ over a common space $\Zspace$, write $\varepsil
 \varepsilon_t(h)\;\le\;\varepsilon_s(h)+\tfrac12\,d_{\Hspace\Delta\Hspace}(\mathcal D_s^{Z},\mathcal D_t^{Z})+\lambda^\star,
 \label{eq:bendavid}
 \end{equation}
-where $\lambda^\star=\min_{h'\in\Hspace}\,[\varepsilon_s(h')+\varepsilon_t(h')]$. Eq.~\eqref{eq:bendavid} is informative only if (a) a common space $\Zspace$ exists (Section~\ref{sec:align}) and (b) $\lambda^\star$ is small, which fails under label shift (Prop.~\ref{prop:labelshift}).
+where $\lambda^\star=\min_{h'\in\Hspace}\,[\varepsilon_s(h')+\varepsilon_t(h')]$. Eq.~\eqref{eq:bendavid} is informative only if (a) a common space $\Zspace$ exists (Section~\ref{sec:align}) and (b) $\lambda^\star$ is small. Condition (b) is the crux for fraud: no unlabelled alignment can reduce $\lambda^\star$, and under label shift it is bounded away from zero (Prop.~\ref{prop:labelshift}).
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=4mm, font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=7mm, inner sep=2pt},
+  arr/.style={-{Stealth[length=1.6mm]}, thick}]
+  \node[box] (cc) {Credit card\\$\Xspace_{\rm CC}\subseteq\R^{d_1}$};
+  \node[box, below=of cc] (mm) {Mobile money\\$\Xspace_{\rm MM}\subseteq\R^{d_2}$};
+  \node[box, below=of mm] (hi) {Health ins.\\$\Xspace_{\rm HI}\subseteq\R^{d_3}$};
+  \node[box, right=9mm of mm, fill=blue!8] (al) {Concept map $\phi_k$\\ amount $\cdot$ counterparty\\ $\cdot$ structure\\ $\Zspace=\R^3$};
+  \node[box, right=9mm of al, yshift=9mm, fill=green!8] (d1) {DANN\\(+prior corr.)};
+  \node[box, right=9mm of al, fill=green!8] (d2) {Class-cond.\\MMD};
+  \node[box, right=9mm of al, yshift=-9mm, fill=green!8] (d3) {Gated net\\+ L2-SP};
+  \node[box, right=9mm of d2, fill=orange!10] (out) {Fraud score\\$h(z)$ + cost\\threshold};
+  \draw[arr] (cc.east) -- ++(3mm,0) |- (al.west);
+  \draw[arr] (mm.east) -- (al.west);
+  \draw[arr] (hi.east) -- ++(3mm,0) |- (al.west);
+  \foreach \i in {d1,d2,d3}{\draw[arr] (al.east) -- (\i.west); \draw[arr] (\i.east) -- ++(2mm,0) |- (out.west);}
+\end{tikzpicture}
+\caption{UniFraud-GH pipeline: sector schemas are projected into a shared concept space, three adaptation strategies operate there, and the resulting score is thresholded with a cost-sensitive rule.}
+\label{fig:pipeline}
+\end{figure}
+
+%=======================================================================
 \section{Data and Label Construction}\label{sec:labels}
 \begin{table}[t]
 \centering
-\caption{Dataset statistics (from the corrected pipeline's inventory; verified against notebook outputs).}
+\caption{Dataset statistics (verified against notebook outputs).}
 \label{tab:data}
 \small
 \begin{tabular}{@{}lrrl@{}}
@@ -96,34 +232,42 @@ Health ins. (NHIA) & 2\,655 & 41.62\% & \emph{rule-generated} \\
 \bottomrule
 \end{tabular}
 \end{table}
-Sparkov and MoMTSim are synthetic generators \cite{sparkov,momtsim2024}; external validity to production data is therefore a stated limitation (Section~\ref{sec:threats}). The health-insurance claims are real but carry no adjudicated fraud flag; labels are produced by tariff-compliance rules in the spirit of \cite{sowah2019nhis}.
+Sparkov and MoMTSim are synthetic generators \cite{sparkov,azamuke2022momtsim}; external validity to production data is therefore a stated limitation (Section~\ref{sec:threats}), and generator assumptions should be documented as recommended in \cite{altman2023realistic}. The health-insurance claims are real but carry no adjudicated fraud flag; labels are produced by tariff-compliance rules attributed in the project repository to \cite{sowah2019dss} (to be verified).
 
 \subsection{Rule-generated labels}
-Let a claim have service charge $S$, medical (drug) charge $M$, total $T$ and approved tariff $A$, the latter obtained by joining the claim's G-DRG code to the tariff table (defined only when the join succeeds; match rate 67.1\%, 1\,781 of 2\,655). With $\1[\cdot]$ the indicator and $\mathrm{na}(u)=0$ for missing $u$,
+Let a claim have service charge $S$, medical (drug) charge $M$, total $T$ and approved tariff $A$, the latter obtained by joining the claim's G-DRG code to the tariff table (defined only when the join succeeds; match rate $67.1\%$, $1\,781$ of $2\,655$). With $\1[\cdot]$ the indicator and $\mathrm{na}(u)=0$ for missing $u$, the original implementation used
 \begin{align}
 r_1&=\1[S>A],\quad r_2=\1[M>\tfrac12A],\quad r_3=\1[T>A],\nonumber\\
 r_4&=\1[\,|T-(S+M)|>1\,],\quad r_5=\1[\min\{\mathrm{na}(S),\mathrm{na}(M),\mathrm{na}(T)\}\le 0],\nonumber\\
 y&=\1\Big[\textstyle\sum_{i=1}^5 r_i>0\Big]. \label{eq:rules}
 \end{align}
-Observed trigger counts are $(8,271,470,6,632)$ for $(r_1,\dots,r_5)$. Because $M$ is observed for only $2026$ of $2655$ claims ($629$ missing), rule $r_5$ fires on $632$ claims: at least $629/632\approx99.5\%$ of these triggers are explained by a \emph{missing drug charge}, not by a non-positive bill. Missingness is thus being labelled as fraud, which is a defect of the construction rather than a property of fraud (Section~\ref{sec:threats}); the corrected pipeline treats $r_5$ as ``data-quality flag'' and reports results with and without it.
+Observed trigger counts are $(8,271,470,6,632)$ for $(r_1,\dots,r_5)$.
+
+\begin{proposition}[Missing-data artefact in $r_5$]\label{prop:missing}
+Let $n=2655$, $n_M=629$ the number of claims with $M$ missing (since $M$ is observed for $2026$ claims), and $n_5=632$ the number of claims on which $r_5$ fires. Then at least $n_M/n_5\approx99.5\%$ of $r_5$'s triggers are explained by a missing drug charge, and $r_5$ alone accounts for at most $n_5/\!\sum y=632/1105\approx57.2\%$ of positive labels. The implied fraud prior excluding $r_5$ is at least $(1105-632)/2655\approx17.8\%$ and at most $41.62\%$; hence the reported prevalence conflates fraud with missingness.
+\end{proposition}
+\begin{proof}
+Under $r_5$, $\mathrm{na}(M)=0\le0$ holds whenever $M$ is missing, so every missing-$M$ claim triggers $r_5$; at most $n_5-n_M=3$ triggers can come from other causes. The remaining counts follow by subtraction, with equality only if no other rule fires on $r_5$-flagged claims. \end{proof}
+Missingness is thus being labelled as fraud, a defect of the construction and not a property of fraud; the corrected pipeline treats missing data as a data-quality flag and reports results with and without $r_5$'s intent (observed non-positive bills) and with unmatched claims excluded. Because missingness of $M$ is plausibly informative of facility or claim type (not necessarily fraud), a classifier given the missingness pattern will exploit it, which is a form of weak-label noise \cite{ratner2016dataprogramming,song2022noisy} correlated with covariates and therefore harder to remove than uniform noise.
 
 \begin{proposition}[Circularity of rule-generated labels]\label{prop:circ}
 Suppose $y=g(x_R)$ for a deterministic $g$ and a feature subset $R$. If a model class contains a function of $x_R$ that equals $g$ (e.g.\ a depth-bounded tree for threshold rules), then the Bayes risk over the full feature set is $0$, and any held-out score on that feature set estimates the \emph{rule-reproduction} ability of the learner rather than fraud detection. Moreover, any feature $f(x_R)$ that is a function of rule inputs inherits this leakage.
 \end{proposition}
 \begin{proof}
 $h(x)=g(x_R)$ attains zero error under $\mathcal D_t$ by construction, so $\min_h R_t(h)=0$. A held-out estimate of $R_t(\hat h)$ then measures how closely $\hat h$ approximates $g$. For $f(x_R)$: $g$ is a function of $x_R$, hence also of $(x_R, f(x_R))$. \end{proof}
-\noindent In particular the features $S,M,T,A$, ratios and deviations $(\cdot-A)/A$, the per-DRG label rate, and quasi-identifiers such as folder and insurance-ID numbers (which allow the same patient to appear in train and test) must be excluded, and splits must be grouped by patient.
+\noindent In particular the features $S,M,T,A$, ratios and deviations $(\cdot-A)/A$, the per-DRG label rate, and quasi-identifiers such as folder and insurance-ID numbers (which allow the same patient to appear in train and test) must be excluded, and splits must be grouped by patient. These are the leakage channels catalogued generally in \cite{kapoor2023leakage,kaufman2012leakage}.
 
+%=======================================================================
 \section{Methodology}\label{sec:method}
 \subsection{Leakage-free preprocessing}\label{sec:prep}
-Let $\mathcal I_{\rm tr},\mathcal I_{\rm va},\mathcal I_{\rm te}$ be a partition of indices (random stratified for HI grouped by patient; \emph{chronological} for CC and MM). Every data-dependent transform $T_\theta$ (imputation, capping at the $q$-th percentile, scaling, categorical encoding, feature selection) is fit on $\mathcal I_{\rm tr}$ only: $\hat\theta=\theta(\{x_i\}_{i\in\mathcal I_{\rm tr}})$, then applied unchanged to validation and test. For a categorical value $c$, the smoothed target encoding is
+Let $\mathcal I_{\rm tr},\mathcal I_{\rm va},\mathcal I_{\rm te}$ be a partition of indices (random stratified for HI grouped by patient; \emph{chronological} for CC and MM). Every data-dependent transform $T_\theta$ (imputation, capping at the $q$-th percentile, scaling, categorical encoding, feature selection) is fit on $\mathcal I_{\rm tr}$ only: $\hat\theta=\theta(\{x_i\}_{i\in\mathcal I_{\rm tr}})$, then applied unchanged to validation and test. For a categorical value $c$ with $n_c$ training rows, mean label $\bar y_c$ and overall mean $\bar y$, the smoothed target encoding is
 \begin{equation}
 \mathrm{TE}(c)=\frac{n_c\bar y_c+m\,\bar y}{n_c+m},
 \end{equation}
 \cite{micci2001target}, computed from \emph{out-of-fold} statistics within the training partition so that a row's own label never enters its encoding. Resampling (below) is applied inside each training fold only.
 
 \subsection{Semantic concept alignment}\label{sec:align}
-Let $F_k=\{1,\dots,d_k\}$ index sector-$k$ features. A domain expert (or a documented rule table) provides, for each concept $c\in\{\text{amt, cpty, dist}\}$, a disjoint index set $G_{kc}\subseteq F_k$ and an orientation $\sigma_j\in\{-1,+1\}$ for $j\in G_{kc}$ (+1 iff larger values indicate higher risk).
+Let $F_k=\{1,\dots,d_k\}$ index sector-$k$ features. A domain expert (or a documented rule table) provides, for each concept $c\in\{\text{amt, cpty, dist}\}$, a disjoint index set $G_{kc}\subseteq F_k$ and an orientation $\sigma_j\in\{-1,+1\}$ for $j\in G_{kc}$ ($+1$ iff larger values indicate higher risk).
 
 \begin{definition}[Concept map]
 Let $\mu_j,s_j>0$ be the training mean and standard deviation of feature $j$. The concept map $\phi_k:\R^{d_k}\to\R^3$ has components
@@ -138,6 +282,15 @@ Let $\mu_j,s_j>0$ be the training mean and standard deviation of feature $j$. Th
 \end{proposition}
 \begin{proof}
 (i) With $\mu_j'=a_j\mu_j+b_j$, $s_j'=a_js_j$: $(a_jx_j+b_j-\mu_j')/s_j'=(x_j-\mu_j)/s_j$. (ii) Linearity of expectation gives mean $0$; the variance is the average of all $|G|^2$ entries of the correlation matrix, whose diagonal contributes $|G|^{-1}$ and whose off-diagonal contributes $(1-|G|^{-1})\bar\rho$, hence $\mathrm{Var}=|G|^{-1}+(1-|G|^{-1})\bar\rho\in[\bar\rho,1]$. (iii) A non-negative combination of non-decreasing functions is non-decreasing. \end{proof}
+
+Alignment is useful only if it does not discard fraud-relevant information. The next result states the price exactly.
+
+\begin{proposition}[Bayes-risk monotonicity of alignment]\label{prop:bayes}
+Let $\eta(x)=\Prob(Y{=}1\mid X{=}x)$ and $R^\ast(X)=\E[\min\{\eta(X),1-\eta(X)\}]$ the Bayes error in the full space, $R^\ast(\phi(X))$ that in concept space. Then $R^\ast(\phi(X))\ge R^\ast(X)$, with equality iff $\eta(X)$ is a.s.\ a function of $\phi(X)$ (i.e.\ $\phi$ is sufficient for $Y$).
+\end{proposition}
+\begin{proof}
+Let $\eta_\phi=\E[\eta(X)\mid\phi(X)]$. The map $u\mapsto\min\{u,1-u\}$ is concave, so by conditional Jensen, $\min\{\eta_\phi,1-\eta_\phi\}\ge\E[\min\{\eta,1-\eta\}\mid\phi(X)]$; taking expectations yields the inequality. Equality in Jensen for a strictly concave function requires $\eta$ to be $\phi(X)$-measurable; the minimum has a kink only at $u=\tfrac12$, so equality also holds if $\eta$ never crosses $\tfrac12$ within a fibre of $\phi$, which is the case when $\phi$ is sufficient for the Bayes decision. \end{proof}
+\noindent Thus within-domain models in the full space are never worse than concept-space models in the Bayes sense; the concept map is justified solely by \emph{transfer}, where the full spaces are not comparable. This is why we report, for each sector, the concept-space score alongside the full-feature score.
 
 \begin{remark}
 Sign orientation $\sigma_j$ is essential: without it, averaging a risk-increasing and a risk-decreasing feature cancels the signal. An earlier implementation omitted both orientation and any restriction to the concept space, concatenating the three concepts with the \emph{first} $\min(d_s,d_t)$ raw columns by position; positional columns have unrelated meanings across sectors, which breaks the premise of \eqref{eq:bendavid}. The corrected design uses $\Zspace=\R^3$ (and, optionally, a shared set of engineered universal features such as the robust amount $z$-score and a velocity proxy).
@@ -158,7 +311,7 @@ Consequently $p(x)=q(x)/\big(q(x)+\omega(1-q(x))\big)$. The same relation holds,
 \begin{proof}
 Pointwise, the minimiser of $p\,\omega\,\ell(f,1)+(1-p)\,\ell(f,0)$ is the logistic-calibrated value for the normalised weights $\tilde p=\omega p/(\omega p+1-p)$, i.e.\ $\sigma(f^\star)=\tilde p$. Odds scale by $\omega$. \end{proof}
 
-\paragraph{SMOTE.} For a minority point $x_i$ with a $k$-nearest minority neighbour $x_{\nu}$, SMOTE generates $x'=x_i+\gamma(x_\nu-x_i)$, $\gamma\sim\mathrm U[0,1]$ \cite{chawla2002smote}. Synthetic points lie in the convex hull of minority neighbours; applied before data splitting or inside cross-validation \emph{outside} the fold loop it places near-copies of validation points in training folds, inflating scores. We apply it inside each training fold.
+\paragraph{SMOTE.} For a minority point $x_i$ with a $k$-nearest minority neighbour $x_{\nu}$, SMOTE generates $x'=x_i+\gamma(x_\nu-x_i)$, $\gamma\sim\mathrm U[0,1]$ \cite{chawla2002smote}. Synthetic points lie in the convex hull of minority neighbours; applied before data splitting or inside cross-validation \emph{outside} the fold loop it places near-copies of validation points in training folds, inflating scores. We apply it inside each training fold and compare it with reweighting (XGBoost's per-instance weights \cite{chen2016xgboost}) as an ablation.
 
 \begin{proposition}[Cost-sensitive Bayes threshold]\label{prop:cost}
 With costs $c_{FP},c_{FN}>0$ for false positives and false negatives (zero for correct decisions), the decision minimising expected cost predicts fraud iff $p(x)\ge\tau^\star=c_{FP}/(c_{FP}+c_{FN})$. In terms of a model trained with weight $\omega$, the equivalent threshold on $q$ is $\tau_q=\omega\tau^\star/(\omega\tau^\star+1-\tau^\star)$.
@@ -172,7 +325,7 @@ Predicting 1 costs $(1-p)c_{FP}$, predicting 0 costs $p\,c_{FN}$; the first is n
 \begin{equation}
 \tfrac12\Big[\tfrac{G_L^2}{H_L+\lambda}+\tfrac{G_R^2}{H_R+\lambda}-\tfrac{(G_L+G_R)^2}{H_L+H_R+\lambda}\Big]-\gamma .
 \end{equation}
-\textbf{Isolation forest} \cite{liu2008iforest}: anomaly score $s(x,n)=2^{-\E[h(x)]/c(n)}$ with $c(n)=2H(n-1)-2(n-1)/n$, $H$ the harmonic number. \textbf{Autoencoder}: trained on legitimate training points only, with score $\|x-\psi(\varphi(x))\|_2^2$.
+\textbf{Isolation forest} \cite{liu2008iforest}: anomaly score $s(x,n)=2^{-\E[h(x)]/c(n)}$ with $c(n)=2H(n-1)-2(n-1)/n$, $H$ the harmonic number. \textbf{Autoencoder}: trained on legitimate training points only, with score $\|x-\psi(\varphi(x))\|_2^2$. Following the evidence that tree ensembles remain the strongest tabular family at this scale \cite{grinsztajn2022trees,borisov2024deep}, gradient boosting is the primary within-domain comparator; an MLP/ResNet or FT-Transformer \cite{gorishniy2021revisiting} and TabPFN for the small HI set \cite{hollmann2025tabpfn} serve as secondary baselines.
 
 \subsection{Domain adaptation}\label{sec:da}
 After alignment, source and target samples live in $\Zspace$. Let $G_f:\Zspace\to\R^m$ be a feature extractor and $G_y:\R^m\to[0,1]$ a classifier. All three methods minimise
@@ -198,16 +351,281 @@ The chain rule through $R_\lambda$ gives $\partial\mathcal L_d/\partial\theta_f=
 The reversal coefficient must appear \emph{once}: either in the layer (with unit weight on $\mathcal L_d$) or as an explicit loss weight with a plain identity layer, not both. An earlier implementation multiplied the domain loss by $\lambda$ \emph{and} reversed with $-\lambda$, so the extractor saw $-\lambda^2\nabla\mathcal L_d$ and the discriminator $\lambda\nabla\mathcal L_d$, silently changing the schedule; the corrected objective applies it once.
 \end{remark}
 
-By \eqref{eq:bendavid}, driving a good domain discriminator to chance reduces the proxy $\mathcal A$-distance $d_{\mathcal A}=2(1-2\epsilon_d)$, where $\epsilon_d$ is the discriminator's error, which we report as a diagnostic.
+By \eqref{eq:bendavid}, driving a good domain discriminator to chance reduces the proxy $\mathcal A$-distance $d_{\mathcal A}=2(1-2\epsilon_d)$, where $\epsilon_d$ is the discriminator's error, which we report as a diagnostic. Conditional variants such as CDAN \cite{long2018cdan} would align joint structure but depend on target pseudo-predictions that are dominated by the majority class at a $0.5\%$ prior, so we use the class-conditional criterion below instead.
 
+\paragraph{Subdomain (class-conditional) MMD.} Let $k$ be a Gaussian kernel $k_\sigma(u,v)=\exp(-\|u-v\|^2/2\sigma^2)$ with RKHS $\mathcal H_k$ and feature map $\psi$. The (biased) squared maximum mean discrepancy between samples $\{u_i\}_1^{m}$, $\{v_j\}_1^{n}$ is
+\begin{equation}
+\widehat{\MMD}^2=\frac1{m^2}\!\sum_{i,i'}\!k(u_i,u_{i'})+\frac1{n^2}\!\sum_{j,j'}\!k(v_j,v_{j'})-\frac2{mn}\!\sum_{i,j}\!k(u_i,v_j).
+\end{equation}
+\begin{proposition}[MMD properties \cite{gretton2012kernel}]\label{prop:mmd}
+$\MMD^2(P,Q)=\|\E_P\psi(u)-\E_Q\psi(v)\|_{\mathcal H_k}^2=\sup_{\|f\|_{\mathcal H_k}\le1}\big(\E_Pf-\E_Qf\big)^2$. For a characteristic kernel (Gaussian on $\R^d$), $\MMD(P,Q)=0\iff P=Q$; the unbiased estimator excluding diagonal terms has expectation $\MMD^2$.
+\end{proposition}
+Global MMD \cite{long2015dan} matches marginals and therefore inherits Prop.~\ref{prop:labelshift}. The \emph{class-conditional} (subdomain) variant matches conditionals $p(z\mid y=c)$ \cite{zhu2021dsan}:
+\begin{equation}
+\mathcal L_{\rm LMMD}=\frac1C\sum_{c=1}^{C}\Big\|\sum_{i}w^{s}_{ic}\,\psi(G_f(x^s_i))-\sum_{j}w^{t}_{jc}\,\psi(G_f(x^t_j))\Big\|^2_{\mathcal H_k},
+\end{equation}
+with $w^s_{ic}=y_{ic}/\sum_{i'}y_{i'c}$ (one-hot source labels) and $w^t_{jc}=\hat y_{jc}/\sum_{j'}\hat y_{j'c}$ using soft predictions; with only $C=2$ classes and a rare positive class, the fraud weights are carried by few examples, so we use a multi-bandwidth kernel $\sum_{u}k_{\sigma_u}$, $\sigma_u\in\{0.5,1,2,4\}$ (justified by Prop.~\ref{prop:mmdbw}) and report per-class sample counts. Because the conditional distributions are matched, the bound of Prop.~\ref{prop:labelshift} does not apply to $\mathcal L_{\rm LMMD}$ to the same extent, in the spirit of generalised label shift \cite{tachet2020gls}. (The clustering-based ``subdomain'' described in an earlier README is \emph{not} what the notebook implemented: it computed a single global kernel MMD on one hidden layer with a fixed bandwidth.)
+
+\paragraph{HEN-style attention-gated network.} A feature-attention gate $a(z)=\mathrm{softmax}\big(W_2\tanh(W_1z+b_1)+b_2\big)\in\Delta^{d-1}$ re-weights inputs, $\tilde z=z\odot a(z)$, followed by an encoder $g_\phi$ and a linear head: $h(z)=\sigma(w^\top g_\phi(\tilde z)+b)$. Stage 1 minimises $\hat R_s^\omega$ ($\beta=0$). Stage 2 fine-tunes on the $b$ labelled target examples from the warm start $\theta_s$ with a smaller step and an L2-SP anchor \cite{li2018l2sp}:
+\begin{equation}
+\hat\theta_t=\argmin_{\theta}\;\hat R_{t,b}^{\omega_t}(\theta)+\tfrac{\eta}2\|\theta-\theta_s\|_2^2 .
+\label{eq:l2sp}
+\end{equation}
+\begin{remark}
+Because the softmax sums to one, each gated coordinate is scaled by roughly $1/d$; batch normalisation after the first linear layer removes the resulting scale effect, but attention weights are then comparable only within, not across, models. Attention is a model-internal diagnostic, not a faithful explanation; explanations are obtained with SHAP (Section~\ref{sec:xai}). Since this network uses target labels, it competes in the label-budget setting $b>0$ against a \emph{target-only} model trained on the same $b$ labels; Section~\ref{sec:protocol} defines the transfer gain. We call it ``HEN-style'' because it borrows the attention idea of \cite{zhu2020hen} but operates on tabular concept features, not behaviour sequences.
+\end{remark}
+
+\begin{algorithm}[t]
+\caption{Cross-sector transfer (one directed pair $s\to t$)}\label{alg:pipeline}
+\begin{algorithmic}[1]
+\State \textbf{Input:} $\mathcal S_s$, unlabelled $\{x^t_j\}$, budget $b$ labelled target pairs $\mathcal T_b$, concept tables $(G_{kc},\sigma)$
+\State Split each sector (chronological/grouped); fit all preprocessors on train only
+\State $z\gets\phi_k(x)$ for $k\in\{s,t\}$ \Comment{Eq.~\eqref{eq:concept}}
+\State Estimate $\hat\pi_t$ (Prop.~\ref{prop:bbse}); set $\omega=\frac{\hat\pi_t/(1-\hat\pi_t)}{\pi_s/(1-\pi_s)}$
+\State Train $G_f,G_y$ by Eq.~\eqref{eq:unified} with $\mathcal L_{\rm align}\in\{$DANN, LMMD$\}$; for the gated network pre-train then fine-tune (Eq.~\eqref{eq:l2sp})
+\State Select hyper-parameters by source/importance-weighted validation or CV on $\mathcal T_b$ (no target-test labels)
+\State Calibrate $q\!\to\!p$ (Prop.~\ref{prop:weight}); threshold at $\tau_q$ (Prop.~\ref{prop:cost}); report $\Delta_m(b)$ vs.\ target-only
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Stacked ensemble}
+Base learners $f_1,\dots,f_M$ (LR, RF, XGB) produce out-of-fold predictions $z_{im}=f_m^{(-\kappa(i))}(x_i)$ where $\kappa(i)$ is the fold of $i$; a logistic meta-learner is fit on $z_i=(z_{i1},\dots,z_{iM})$ \cite{wolpert1992stacked}. Resampling must be inside the fold loop so that OOF predictions do not see synthetic neighbours of the held-out point.
+
+\subsection{Explainability}\label{sec:xai}
+For a model $f$ and feature set $F$ ($|F|=M$), the Shapley attribution of feature $j$ at $x$ is
+\begin{equation}
+\phi_j(x)=\sum_{S\subseteq F\setminus\{j\}}\frac{|S|!\,(M-|S|-1)!}{M!}\big[f_{S\cup\{j\}}(x)-f_S(x)\big],
+\end{equation}
+the unique allocation satisfying efficiency ($\sum_j\phi_j=f(x)-\E f$), symmetry, dummy and additivity \cite{lundberg2017shap}; TreeSHAP computes it exactly for tree ensembles in $O(TLD^2)$ \cite{lundberg2020trees}. LIME fits $g=\argmin_{g\in\mathcal G}\mathcal L(f,g,\pi_x)+\Omega(g)$ locally \cite{ribeiro2016lime}. Both have limits that we respect: Shapley importances depend on the value function and on feature correlation \cite{kumar2020shapley}, and perturbation-based explainers can be unreliable off the data manifold \cite{slack2020fooling}. For cross-sector comparison, importances are aggregated to the three concepts, $I_c=\sum_{j\in G_{kc}}\overline{|\phi_j|}$ normalised to sum to one per sector, and compared by Kendall's $\tau$ with a permutation test; raw feature importances are \emph{not} comparable across sectors because feature sets differ. Explanations are computed on held-out data only.
+
+%=======================================================================
+\section{Implementation Architecture and Algorithms}\label{sec:impl}
+This section fixes the algorithmic structure that the corrected code base implements. Fig.~\ref{fig:flow} shows the end-to-end data flow with the module that realises each stage; Fig.~\ref{fig:leak} shows the information-flow rule that every stage obeys; Fig.~\ref{fig:dannflow} unrolls the adversarial training loop. Algorithms~\ref{alg:labels}--\ref{alg:eval} give the procedures in executable detail, and Table~\ref{tab:complexity} their cost.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize, node distance=5mm and 7mm,
+  blk/.style={draw, rounded corners=2pt, align=center, minimum width=2.9cm, minimum height=9mm, inner sep=2pt, fill=blue!6},
+  dec/.style={draw, diamond, aspect=2.2, align=center, inner sep=0pt, fill=yellow!14, minimum width=2.6cm},
+  mod/.style={font=\tiny\ttfamily, text=black!60},
+  bad/.style={draw, rounded corners=2pt, align=center, fill=red!10, minimum width=2.2cm, inner sep=2pt},
+  arr/.style={-{Stealth[length=1.6mm]}, thick}]
+  % row 1
+  \node[blk] (raw) {Raw sources\\ CC $\cdot$ MM $\cdot$ HI + tariff};
+  \node[blk, right=of raw] (lab) {HI label builder\\ rules $r_1$--$r_4$; DQ flags\\ untariffed $\to$ \texttt{NaN}};
+  \node[dec, right=of lab] (leak) {forbidden col.\\ or AUC $\ge0.98$?};
+  \node[blk, right=of leak] (time) {Time features\\ parse \emph{before} encoding};
+  \node[blk, right=of time] (split) {Split\\ chrono (CC,MM)\\ grouped (HI)};
+  \node[bad, below=7mm of leak] (drop) {drop column /\\ raise error};
+  % row 2
+  \node[blk, below=21mm of raw] (fit) {Fit preprocessors\\ on TRAIN only\\ winsor $\cdot$ scale $\cdot$ OOF-TE};
+  \node[blk, right=of fit] (conc) {Concept map $\phi_k$\\ oriented z-avg\\ $\Zspace=\R^3$};
+  \node[dec, right=of conc] (bq) {label budget\\ $b>0$?};
+  \node[blk, right=of bq, yshift=6mm] (zero) {Zero-shot: DANN, LMMD\\ + prior correction};
+  \node[blk, right=of bq, yshift=-6mm] (few) {Few-shot: gated net\\ + L2-SP; target-only};
+  \node[blk, right=12mm of zero, yshift=-6mm] (eval) {Val: calibrate,\\ cost threshold\\ Test: AP$_{\rm skill}$, MCC, $\Delta_m(b)$\\ stats, SHAP};
+  \node[mod, below=0.5mm of raw] {data/};
+  \node[mod, below=0.5mm of lab] {labels\_hi.py};
+  \node[mod, below=0.5mm of time] {preprocess.py};
+  \node[mod, below=0.5mm of split] {splits.py};
+  \node[mod, below=0.5mm of fit] {preprocess.py};
+  \node[mod, below=0.5mm of conc] {concepts (to add)};
+  \node[mod, below=0.5mm of eval] {eval/stats (to add)};
+  \node[mod, above=0.5mm of leak] {leakage.py};
+  \draw[arr] (raw) -- (lab);
+  \draw[arr] (lab) -- (leak);
+  \draw[arr] (leak) -- node[above]{no} (time);
+  \draw[arr] (leak) -- node[right]{yes} (drop);
+  \draw[arr] (time) -- (split);
+  \draw[arr] (split.south) -- ++(0,-6mm) -| ([xshift=0mm]fit.north);
+  \draw[arr] (fit) -- (conc);
+  \draw[arr] (conc) -- (bq);
+  \draw[arr] (bq.east) |- node[pos=0.8,above]{no} (zero.west);
+  \draw[arr] (bq.east) |- node[pos=0.8,below]{yes} (few.west);
+  \draw[arr] (zero.east) -- ++(3mm,0) |- (eval.west);
+  \draw[arr] (few.east) -- ++(3mm,0) |- (eval.west);
+\end{tikzpicture}
+\caption{End-to-end implementation flowchart with the code module for each stage. Every fitted component sees training rows only (Fig.~\ref{fig:leak}); the leakage guard is a hard stop, not a warning.}
+\label{fig:flow}
+\end{figure*}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  blk/.style={draw, rounded corners=2pt, align=center, minimum width=1.7cm, minimum height=7mm, inner sep=2pt},
+  arr/.style={-{Stealth[length=1.5mm]}, thick}]
+  \node[blk, fill=green!10] (tr) {TRAIN};
+  \node[blk, fill=blue!8, right=11mm of tr] (va) {VAL};
+  \node[blk, fill=orange!12, right=5mm of va] (te) {TEST};
+  \node[blk, fill=yellow!15, below=8mm of tr] (fit) {fit $\hat\theta$:\\ quantiles, scaler,\\ imputer, OOF-TE,\\ $\mu_j,s_j$, selection};
+  \node[blk, below=8mm of va, xshift=6mm, minimum width=2.6cm] (apply) {transform with frozen $\hat\theta$};
+  \draw[arr] (tr) -- (fit);
+  \draw[arr] (fit.east) -- (apply.west);
+  \draw[arr] (va) -- (apply.north west);
+  \draw[arr] (te) -- (apply.north east);
+  \draw[red, very thick, -{Stealth}] (te.north) -- ++(0,5mm) -| node[pos=0.25,above,text=red]{$\times$ never} ([xshift=-6mm]tr.north);
+\end{tikzpicture}
+\caption{Information-flow rule: statistics are learned from the training partition and frozen; validation and test are only transformed. The red path (test statistics informing preprocessing, encoding, selection or thresholds) is forbidden and covered by unit tests.}
+\label{fig:leak}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize, node distance=4.2mm,
+  blk/.style={draw, rounded corners=2pt, align=center, minimum width=5.0cm, text width=4.8cm, minimum height=6.5mm, inner sep=2pt, fill=blue!6},
+  dec/.style={draw, diamond, aspect=3, align=center, inner sep=0pt, fill=yellow!14, minimum width=3cm},
+  arr/.style={-{Stealth[length=1.5mm]}, thick}]
+  \node[blk] (a) {epoch $e$: $\lambda_p=\tfrac{2}{1+e^{-\gamma p}}-1$, $p=e/E$};
+  \node[blk, below=of a] (b) {sample source batch $(z^s,y^s)$ and unlabelled target batch $z^t$};
+  \node[blk, below=of b] (c) {$f^s=G_f(z^s)$,\; $f^t=G_f(z^t)$};
+  \node[blk, below=of c] (d) {$\mathcal L_y=\mathrm{wBCE}(G_y(f^s),y^s;\omega)$\\ $\mathcal L_d=\tfrac12[\mathrm{CE}(G_d(R_\lambda f^s),0)+\mathrm{CE}(G_d(R_\lambda f^t),1)]$};
+  \node[blk, below=of d] (e) {backprop $\mathcal L_y+\mathcal L_d$ (reversal inside $R_\lambda$); Adam step};
+  \node[dec, below=of e] (f) {last batch?};
+  \node[blk, below=6mm of f] (g) {validate on \emph{source} val (AP); keep best; early stop};
+  \node[dec, below=of g] (h) {$e<E$ and patience?};
+  \node[blk, below=6mm of h] (i) {return best $(G_f,G_y)$};
+  \draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d); \draw[arr] (d)--(e); \draw[arr] (e)--(f);
+  \draw[arr] (f)--node[right]{yes}(g); \draw[arr] (g)--(h); \draw[arr] (h)--node[right]{no}(i);
+  \draw[arr] (f.east) -- ++(1.9cm,0) |- node[pos=0.25,right]{no}(b.east);
+  \draw[arr] (h.east) -- ++(2.3cm,0) |- node[pos=0.25,right]{yes}(a.east);
+\end{tikzpicture}
+\caption{Unrolled DANN training loop (Algorithm~\ref{alg:dann}). The reversal coefficient is applied once, and model selection uses source validation, never target-test labels.}
+\label{fig:dannflow}
+\end{figure}
+
+\begin{algorithm}[t]
+\caption{Health-insurance label construction (\texttt{labels\_hi.py})}\label{alg:labels}
+\begin{algorithmic}[1]
+\Require claims $\mathcal C$ with $S,M,T$ and G-DRG; tariff table $\mathcal A$; tolerance $\tau=1$
+\State $A\gets$ left-join of $\mathcal C$ with $\mathcal A$ on G-DRG (upper-cased, stripped); parse $S,M,T$ numerically
+\For{each claim}
+  \State $r_1\gets\1[A\neq\varnothing\wedge S>A]$, $r_2\gets\1[A\neq\varnothing\wedge M>A/2]$, $r_3\gets\1[A\neq\varnothing\wedge T>A]$
+  \State $r_4\gets\1[S,M,T\text{ all observed}\wedge|T-(S+M)|>\tau]$ \Comment{not evaluable if $M$ missing}
+  \State dq flags: missing $S$/$M$/$T$; observed non-positive; no tariff match
+  \State $y\gets\1[\sum_{i\le4}r_i>0]$; \; \textbf{if} $A=\varnothing\wedge y=0$ \textbf{then} $y\gets\texttt{NaN}$
+\EndFor
+\State \Return labels $y$, rule and dq flags, audit counts
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Leakage-free preprocessing (\texttt{splits.py}, \texttt{preprocess.py}, \texttt{leakage.py})}\label{alg:prep}
+\begin{algorithmic}[1]
+\Require frame $X$, labels $y$, domain $k$, grouping/time key
+\State Drop identifier and rule-derived columns (registry); \textbf{assert} no remaining feature has single-feature AUC $\ge0.98$
+\State Add deterministic time features (parse timestamp first)
+\State $(\mathcal I_{\rm tr},\mathcal I_{\rm va},\mathcal I_{\rm te})\gets$ chronological split (CC, MM) or grouped stratified split (HI); \textbf{assert} disjoint
+\State Partition columns on $X_{\rm tr}$ into numeric / low-cardinality / high-cardinality
+\State \textbf{Numeric:} median-impute (+missing indicator) $\to$ winsorise at $q_{0.99}(X_{\rm tr})\to$ robust-scale
+\State \textbf{Low-card.:} one-hot with unseen$\to$zeros; \textbf{High-card.:} OOF target encoding
+\For{fold $(a,b)$ of $K$-fold on $\mathcal I_{\rm tr}$}
+  \State encode rows in $b$ using statistics of rows in $a$ only: $\frac{n_c\bar y_c+m\bar y}{n_c+m}$
+\EndFor
+\State Fit full-train statistics for val/test encoding; unseen category $\mapsto\bar y$
+\State \Return $A_{\rm tr},A_{\rm va},A_{\rm te}$, fitted transformer
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{DANN with prior-corrected weighting}\label{alg:dann}
+\begin{algorithmic}[1]
+\Require source $(z^s,y^s)$, unlabelled target $z^t$, epochs $E$, $\gamma=10$, weight $\omega$ (Prop.~\ref{prop:weight})
+\State Initialise $G_f,G_y,G_d$
+\For{$e=1$ \textbf{to} $E$}
+  \State $\lambda\gets 2/(1+e^{-\gamma e/E})-1$ \Comment{set reversal strength in $R_\lambda$}
+  \For{each batch pair $(z^s,y^s),z^t$}
+    \State $f^s,f^t\gets G_f(z^s),G_f(z^t)$
+    \State $\mathcal L_y\gets$ weighted BCE; $\mathcal L_d\gets\tfrac12[\mathrm{CE}(G_d(R_\lambda f^s),0)+\mathrm{CE}(G_d(R_\lambda f^t),1)]$
+    \State update $\theta$ by Adam on $\mathcal L_y+\mathcal L_d$ \Comment{$\lambda$ applied once}
+  \EndFor
+  \State evaluate source-validation AP; keep best weights; stop if patience exhausted
+\EndFor
+\State \Return $G_y\!\circ\!G_f$; optionally estimate $\hat\pi_t$ (Prop.~\ref{prop:bbse}) and correct posteriors (Prop.~\ref{prop:saerens})
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Class-conditional (subdomain) MMD training}\label{alg:lmmd}
+\begin{algorithmic}[1]
+\Require source $(z^s,y^s)$, unlabelled target $z^t$, bandwidths $\{\sigma_u\}$, weight $\alpha$
+\For{each iteration}
+  \State sample class-balanced source batch (ensures $\ge$ a few positives) and target batch
+  \State $f^s,f^t\gets G_f(z^s),G_f(z^t)$; $\hat y^t\gets G_y(f^t)$ (soft; detached)
+  \State $w^s_{ic}\gets y_{ic}/\sum_{i'}y_{i'c}$; $w^t_{jc}\gets\hat y_{jc}/\sum_{j'}\hat y_{j'c}$
+  \State $K\gets\sum_u k_{\sigma_u}$ over $[f^s;f^t]$ \Comment{$\sigma_u$ relative to median distance}
+  \State $\mathcal L_{\rm LMMD}\gets\frac1C\sum_c\big(w^{s\top}_cK_{ss}w^s_c+w^{t\top}_cK_{tt}w^t_c-2w^{s\top}_cK_{st}w^t_c\big)$
+  \State step on $\mathcal L_y+\alpha\,\mathcal L_{\rm LMMD}$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Gated network: pre-train and L2-SP fine-tune}\label{alg:gated}
+\begin{algorithmic}[1]
+\Require source data, $b$ labelled target pairs $\mathcal T_b$, anchor weight $\eta$
+\State Pre-train $\theta$ on weighted source risk until source-val AP plateaus; $\theta_s\gets\theta$
+\State Split $\mathcal T_b$ into inner folds (stratified); choose $\eta$, epochs by inner CV
+\State Fine-tune: minimise $\hat R^{\omega_t}_{t,b}(\theta)+\tfrac\eta2\|\theta-\theta_s\|^2$ with small step
+\State \Return $\hat\theta_t$; \textbf{baseline:} same architecture trained from scratch on $\mathcal T_b$ only
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[t]
+\caption{Transfer-gain evaluation with corrected statistics}\label{alg:eval}
+\begin{algorithmic}[1]
+\Require pairs $(s,t)$, methods $\mathcal M$, budgets $\mathcal B$, seeds $K$
+\For{each pair, budget $b$, seed $i=1..K$}
+  \State draw $\mathcal T_b$ from target-train; fit target-only baseline and every $m\in\mathcal M$ (Alg.~\ref{alg:dann}--\ref{alg:gated})
+  \State calibrate on validation; threshold by Prop.~\ref{prop:cost}; score on the fixed target test set
+  \State $d_i(m,b)\gets M(\hat h_m)-M(\hat h_{\rm target\text{-}only})$
+\EndFor
+\State per $(m,b)$: bootstrap CI of $\bar d$; corrected $t$ (factor $\tfrac1K+\tfrac{n_{\rm te}}{n_{\rm tr}}$), Wilcoxon, Bayesian ROPE
+\State apply Holm over all tests; report negative-transfer rate $=\Pr(d_i<0)$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{table}[t]
+\centering
+\caption{Computational cost per stage ($n$ examples, $d$ inputs, hidden width $h$, batch $B$, $U$ bandwidths, $E$ epochs, $T$ trees, depth $D$, $L$ leaves).}
+\label{tab:complexity}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Stage & Time \\
+\midrule
+OOF target encoding & $O(n)$ per categorical column \\
+Concept map & $O(n\sum_c|G_c|)$ \\
+DANN epoch & $O\big(n\,(dh+h^2)\big)$, two forwards per step \\
+LMMD per step & $O(UB^2h)$ kernel + $O(B\,dh)$ network \\
+Gated net (attention $d{\times}d$) & $O\big(n\,(d^2+dh)\big)$ per epoch \\
+TreeSHAP & $O(TLD^2)$ per instance \\
+Stacking ($K$-fold, $M$ base) & $K\cdot M$ base fits + meta fit \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent The code realising Algorithms~\ref{alg:labels} and~\ref{alg:prep} (modules \texttt{labels\_hi}, \texttt{leakage}, \texttt{splits}, \texttt{preprocess}) is covered by $18$ unit tests on synthetic data that check, among others, that a missing drug charge is never labelled as fraud, that statistics are independent of test data, and that no group straddles a split; Algorithms~\ref{alg:dann}--\ref{alg:eval} and the concept map are specified here and are the next implementation targets.
+
+%=======================================================================
+\section{Theoretical Analysis}\label{sec:theory}
+This section collects results that determine what is achievable, and that dictate design choices in Section~\ref{sec:method}.
+
+\subsection{Label shift limits invariant representations}\label{sec:labelshift}
 \begin{proposition}[Label shift limits invariant representations \cite{zhao2019invariant}]\label{prop:labelshift}
-Let $\JS(\cdot,\cdot)$ denote the Jensen--Shannon divergence with $\log_2$ and $d_{\JS}=\sqrt{\JS}\in[0,1]$. For any representation $Z=G_f(X)$ and classifier, the sum of source and target errors satisfies
+Let $\JS(\cdot,\cdot)$ denote the Jensen--Shannon divergence with $\log_2$ \cite{lin1991js} and $d_{\JS}=\sqrt{\JS}\in[0,1]$. For any representation $Z=G_f(X)$ and classifier, the sum of source and target errors satisfies
 \begin{equation}
 \varepsilon_s+\varepsilon_t\;\ge\;\tfrac12\big(d_{\JS}(\mathcal D_s^Y,\mathcal D_t^Y)-d_{\JS}(\mathcal D_s^Z,\mathcal D_t^Z)\big)^2 .
 \end{equation}
 In particular, perfect marginal alignment ($d_{\JS}(\mathcal D_s^Z,\mathcal D_t^Z)=0$) forces $\lambda^\star$ in \eqref{eq:bendavid} to be at least $\tfrac12\JS(\mathcal D^Y_s,\mathcal D^Y_t)$.
 \end{proposition}
-\noindent Applying this to the Bernoulli priors of Table~\ref{tab:data}:
+For Bernoulli priors the divergence has a closed form, which we use to evaluate the bound exactly.
+\begin{lemma}[Closed form for Bernoulli priors]\label{lem:js}
+With $H_2(u)=-u\log_2u-(1-u)\log_2(1-u)$, $\JS(\mathrm{Bern}(a),\mathrm{Bern}(b))=H_2\!\big(\tfrac{a+b}2\big)-\tfrac12\big(H_2(a)+H_2(b)\big)$.
+\end{lemma}
+\begin{proof}
+$\JS(P,Q)=H(M)-\tfrac12H(P)-\tfrac12H(Q)$ with $M=\tfrac12(P+Q)$, and $M=\mathrm{Bern}(\tfrac{a+b}2)$. \end{proof}
+\noindent Applying Lemma~\ref{lem:js} to the priors of Table~\ref{tab:data} gives Table~\ref{tab:jsbound}:
 \begin{table}[h]
 \centering
 \caption{Lower bound on $\varepsilon_s+\varepsilon_t$ under perfect marginal alignment, $\tfrac12\JS(\mathrm{Bern}(\pi_s),\mathrm{Bern}(\pi_t))$.}
@@ -223,40 +641,117 @@ MM$\leftrightarrow$HI & 0.0127 & 0.113 & 0.006 \\
 \bottomrule
 \end{tabular}
 \end{table}
-Hence marginal alignment alone is expected to be harmful for transfers involving credit cards, and benign between mobile money and insurance. This is a testable prediction (Section~\ref{sec:results}); the remedy is to estimate target priors and importance-weight the source (label-shift correction) or to rely on target labels (HEN).
+Hence marginal alignment alone is expected to be harmful for transfers involving credit cards, and benign between mobile money and insurance. This is a testable prediction (Section~\ref{sec:results}). The remedy is to estimate target priors and correct the source (Props.~\ref{prop:saerens},~\ref{prop:bbse}), to match conditionals \cite{tachet2020gls,zhang2013target}, or to use target labels, subject to the support condition that the map not destroy information \cite{johansson2019support}.
 
-\paragraph{Subdomain (class-conditional) MMD.} Let $k$ be a Gaussian kernel $k_\sigma(u,v)=\exp(-\|u-v\|^2/2\sigma^2)$ with RKHS $\mathcal H_k$ and feature map $\psi$. The (biased) squared maximum mean discrepancy between samples $\{u_i\}_1^{m}$, $\{v_j\}_1^{n}$ is
+\subsection{Prior correction and estimation}
+\begin{proposition}[Posterior correction under label shift \cite{saerens2002adjusting}]\label{prop:saerens}
+Assume label shift, $p_t(x\mid y)=p_s(x\mid y)$, with priors $\pi_s,\pi_t$. Then
 \begin{equation}
-\widehat{\MMD}^2=\frac1{m^2}\!\sum_{i,i'}\!k(u_i,u_{i'})+\frac1{n^2}\!\sum_{j,j'}\!k(v_j,v_{j'})-\frac2{mn}\!\sum_{i,j}\!k(u_i,v_j).
+p_t(1\mid x)=\frac{w_1\,p_s(1\mid x)}{w_1\,p_s(1\mid x)+w_0\,p_s(0\mid x)},\qquad w_y=\frac{\pi_t(y)}{\pi_s(y)},
 \end{equation}
-\begin{proposition}[MMD properties \cite{gretton2012kernel}]\label{prop:mmd}
-$\MMD^2(P,Q)=\|\E_P\psi(u)-\E_Q\psi(v)\|_{\mathcal H_k}^2=\sup_{\|f\|_{\mathcal H_k}\le1}\big(\E_Pf-\E_Qf\big)^2$. For a characteristic kernel (Gaussian on $\R^d$), $\MMD(P,Q)=0\iff P=Q$; the unbiased estimator excluding diagonal terms has expectation $\MMD^2$.
+equivalently, posterior odds scale by $\frac{\pi_t/(1-\pi_t)}{\pi_s/(1-\pi_s)}$.
 \end{proposition}
-Global MMD matches marginals and therefore inherits Prop.~\ref{prop:labelshift}. The \emph{class-conditional} (subdomain) variant matches conditionals $p(z\mid y=c)$ \cite{zhu2021dsan}:
+\begin{proof}
+By Bayes, $p_t(1\mid x)\propto\pi_t(1)p_t(x\mid1)=\pi_t(1)p_s(x\mid1)=\frac{\pi_t(1)}{\pi_s(1)}\,p_s(1\mid x)\,p_s(x)$; normalise over $y\in\{0,1\}$. \end{proof}
+
+\begin{proposition}[Black-box prior estimation \cite{lipton2018bbse}]\label{prop:bbse}
+Let $\hat y$ be any fixed classifier with joint confusion matrix $C_{ij}=\Prob_s(\hat y{=}i,y{=}j)$ on the source and $\mu_i=\Prob_t(\hat y{=}i)$ on the target. Under label shift, $\mu=Cw$ with $w_j=\pi_t(j)/\pi_s(j)$; if $C$ is invertible, $w=C^{-1}\mu$ and $\hat\pi_t(j)=w_j\pi_s(j)$.
+\end{proposition}
+\begin{proof}
+Under label shift $\Prob_t(\hat y{=}i\mid y{=}j)=\Prob_s(\hat y{=}i\mid y{=}j)$, hence $\mu_i=\sum_j\Prob_s(\hat y{=}i\mid y{=}j)\pi_t(j)=\sum_j\Prob_s(\hat y{=}i,y{=}j)\,\pi_t(j)/\pi_s(j)$. \end{proof}
+\noindent Label shift ($p(x\mid y)$ equal across sectors) is implausible between \emph{different sectors}; we therefore apply Props.~\ref{prop:saerens}--\ref{prop:bbse} \emph{after} concept alignment as a recalibration step and test their effect (ablation A5), and we use a few labelled target points for prior estimation when $b>0$.
+
+\subsection{Optimal use of scarce target labels}
+Combine source and target empirical errors as $\hat\varepsilon_\alpha(h)=\alpha\hat\varepsilon_t(h)+(1-\alpha)\hat\varepsilon_s(h)$, with $m=m_s+m_t$ examples in total and $\beta=m_t/m$. The combined-error bound of Ben-David et al.\ \cite{bendavid2010theory} has, up to universal constants, the form
+\begin{multline}
+\varepsilon_t(\hat h_\alpha)\le\varepsilon_t(h_t^\ast)+C_1\sqrt{\Big(\tfrac{\alpha^2}{\beta}+\tfrac{(1-\alpha)^2}{1-\beta}\Big)\tfrac{\mathrm{VC}\log m+\log(1/\delta)}{m}}\\
++(1-\alpha)\,\Delta,\quad \Delta=\tfrac12\hat d_{\Hspace\Delta\Hspace}+\lambda^\star+\text{(complexity)}.
+\end{multline}
+\begin{proposition}[Optimal source/target weighting]\label{prop:mix}
+Let $f(\alpha)=\alpha^2/\beta+(1-\alpha)^2/(1-\beta)$. (i) If $\Delta=0$, the bound is minimised at $\alpha^\ast=\beta$ (each example weighted equally). (ii) If $\Delta>0$, the minimiser satisfies $\alpha^\ast>\beta$: labelled target examples should be weighted \emph{more} than their share of the sample, and increasingly so as $\Delta$ grows.
+\end{proposition}
+\begin{proof}
+$f'(\alpha)=2\big(\tfrac\alpha\beta-\tfrac{1-\alpha}{1-\beta}\big)=\tfrac{2(\alpha-\beta)}{\beta(1-\beta)}$, so $f$ is minimised at $\alpha=\beta$, proving (i). Let $g(\alpha)=C_1'\sqrt{f(\alpha)}+(1-\alpha)\Delta$ with $C_1'>0$. Then $g'(\alpha)=C_1'\tfrac{f'(\alpha)}{2\sqrt{f(\alpha)}}-\Delta$; at $\alpha=\beta$, $f'=0$ so $g'(\beta)=-\Delta<0$, and $g$ is decreasing at $\beta$; $g$ is convex (sum of the convex $\sqrt{f}$, as the norm of an affine map, and a linear term), so its minimiser lies at $\alpha^\ast>\beta$. \end{proof}
+\noindent This justifies the larger weight on the $b$ labelled target examples and the small step in Eq.~\eqref{eq:l2sp}; since $\Delta$ is large for cross-sector pairs, the optimum places most weight on target labels and transfer helps chiefly through the \emph{initialisation}, which we test with the transfer gain $\Delta_m(b)$ of Section~\ref{sec:protocol}.
+
+\subsection{MMD bandwidth and the information in the criterion}
+\begin{proposition}[Bandwidth limits of the Gaussian MMD]\label{prop:mmdbw}
+For samples with finite second moments, as $\sigma\to\infty$,
 \begin{equation}
-\mathcal L_{\rm LMMD}=\frac1C\sum_{c=1}^{C}\Big\|\sum_{i}w^{s}_{ic}\,\psi(G_f(x^s_i))-\sum_{j}w^{t}_{jc}\,\psi(G_f(x^t_j))\Big\|^2_{\mathcal H_k},
+\MMD^2_\sigma(P,Q)=\frac{\|\mu_P-\mu_Q\|_2^2}{\sigma^2}+O(\sigma^{-4}),
 \end{equation}
-with $w^s_{ic}=y_{ic}/\sum_{i'}y_{i'c}$ (one-hot source labels) and $w^t_{jc}=\hat y_{jc}/\sum_{j'}\hat y_{j'c}$ using soft predictions; with only $C=2$ classes and a rare positive class, the fraud weights are carried by few examples, so we use a multi-bandwidth kernel $\sum_{u}k_{\sigma_u}$, $\sigma_u\in\{0.5,1,2,4\}$ and report per-class sample counts. Because the conditional distributions are matched, the bound of Prop.~\ref{prop:labelshift} does not apply to $\mathcal L_{\rm LMMD}$ to the same extent. (We note that the clustering-based ``subdomain'' described in an earlier README is \emph{not} what the notebook implemented: it computed a single global kernel MMD on one hidden layer with a fixed bandwidth. The present formulation is class-conditional by definition.)
+i.e.\ a very wide kernel only matches means; as $\sigma\to0$ with distinct support points the kernel matrix tends to the identity and the estimator carries no information about the distributions.
+\end{proposition}
+\begin{proof}
+Expand $k_\sigma(u,v)=1-\tfrac{\|u-v\|^2}{2\sigma^2}+O(\sigma^{-4})$. Then $\MMD^2=\E k(u,u')+\E k(v,v')-2\E k(u,v)=\tfrac1{2\sigma^2}\big(2\E\|u-v\|^2-\E\|u-u'\|^2-\E\|v-v'\|^2\big)$. With $\E\|u-v\|^2=\operatorname{tr}\Sigma_P+\operatorname{tr}\Sigma_Q+\|\mu_P-\mu_Q\|^2$ and $\E\|u-u'\|^2=2\operatorname{tr}\Sigma_P$ (similarly for $Q$), the covariance terms cancel and the bracket equals $2\|\mu_P-\mu_Q\|^2$. \end{proof}
+\noindent Consequently a single bandwidth either collapses to mean matching or becomes uninformative; a multi-bandwidth kernel $\sum_u k_{\sigma_u}$ \cite{long2015dan} spans the regimes, and bandwidths are set relative to the median pairwise distance of the aligned features.
 
-\paragraph{HEN (attention-gated pre-train/fine-tune).} A feature-attention gate $a(z)=\mathrm{softmax}\big(W_2\tanh(W_1z+b_1)+b_2\big)\in\Delta^{d-1}$ re-weights inputs, $\tilde z=z\odot a(z)$, followed by an encoder $g_\phi$ and a linear head: $h(z)=\sigma(w^\top g_\phi(\tilde z)+b)$. Stage 1 minimises $\hat R_s^\omega$ ($\beta=0$). Stage 2 fine-tunes on the $b$ labelled target examples from the warm start $\theta_s$ with a smaller step and an L2-SP anchor \cite{li2018l2sp}:
+\subsection{Operating points and prevalence}\label{sec:oppoint}
+\begin{proposition}[Precision at a given operating point]\label{prop:prec}
+For prior $\pi$, precision at true- and false-positive rates $\TPR,\FPR$ is $\mathrm{Prec}=\pi\TPR/(\pi\TPR+(1-\pi)\FPR)$. To reach precision $P^\ast$ at a given $\TPR$, the false-positive rate must satisfy
 \begin{equation}
-\hat\theta_t=\argmin_{\theta}\;\hat R_{t,b}^{\omega_t}(\theta)+\tfrac{\eta}2\|\theta-\theta_s\|_2^2 .
-\label{eq:l2sp}
+\FPR\;\le\;\frac{\pi\,\TPR\,(1-P^\ast)}{(1-\pi)\,P^\ast}.
 \end{equation}
-\begin{remark}
-Because the softmax sums to one, each gated coordinate is scaled by roughly $1/d$; batch normalisation after the first linear layer removes the resulting scale effect, but attention weights are then comparable only within, not across, models. Attention is a model-internal diagnostic, not a faithful explanation; explanations are obtained with SHAP (Section~\ref{sec:xai}). Since HEN uses target labels, it competes in the label-budget setting $b>0$ against a \emph{target-only} model trained on the same $b$ labels; Section~\ref{sec:protocol} defines the transfer gain.
-\end{remark}
+\end{proposition}
+\begin{proof}
+Bayes' rule on the confusion counts: $\mathrm{Prec}=\Prob(Y{=}1\mid\hat Y{=}1)=\pi\TPR/\Prob(\hat Y{=}1)$ with $\Prob(\hat Y{=}1)=\pi\TPR+(1-\pi)\FPR$; solve for $\FPR$. \end{proof}
+\begin{table}[t]
+\centering
+\caption{False-positive budget for $50\%$ precision at $\TPR=0.8$, and precision at $\FPR=1\%$, per sector prior.}
+\label{tab:fpr}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Sector & $\pi$ & max FPR for $P^\ast=0.5$ & precision at FPR $1\%$ \\
+\midrule
+Credit card & 0.0052 & 0.42\% & 0.295 \\
+Mobile money & 0.5484 & 97.2\% & 0.990 \\
+Health ins. & 0.4162 & 57.0\% & 0.983 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.95\columnwidth,height=4.6cm,xmode=log,xlabel={FPR},ylabel={Precision at TPR $=0.8$},
+  xmin=1e-4,xmax=0.5,ymin=0,ymax=1.02,legend style={font=\scriptsize,at={(0.02,0.98)},anchor=north west},tick label style={font=\scriptsize},label style={font=\small},grid=both]
+\addplot[thick,blue,domain=1e-4:0.5,samples=80]{0.0052*0.8/(0.0052*0.8+(1-0.0052)*x)};
+\addlegendentry{Credit card ($\pi{=}0.52\%$)}
+\addplot[thick,red,dashed,domain=1e-4:0.5,samples=80]{0.4162*0.8/(0.4162*0.8+(1-0.4162)*x)};
+\addlegendentry{Health ins. ($\pi{=}41.6\%$)}
+\addplot[thick,green!50!black,dotted,domain=1e-4:0.5,samples=80]{0.5484*0.8/(0.5484*0.8+(1-0.5484)*x)};
+\addlegendentry{Mobile money ($\pi{=}54.8\%$)}
+\end{axis}
+\end{tikzpicture}
+\caption{Prop.~\ref{prop:prec}: at the same detector quality (same $\TPR,\FPR$) precision differs by orders of magnitude across sectors, so $F_1$, precision and PR-AUC are not comparable between them.}
+\label{fig:prec}
+\end{figure}
+\begin{corollary}[Prevalence-normalised comparison]
+The no-skill average precision equals $\pi$, so cross-sector comparison should use the skill score $\mathrm{AP}_{\rm skill}=(\mathrm{AP}-\pi)/(1-\pi)\in[0,1]$, alongside the expected cost of Prop.~\ref{prop:cost}.
+\end{corollary}
+Table~\ref{tab:fpr} and Fig.~\ref{fig:prec} make the practical point of precision--recall analysis \cite{saito2015pr} quantitative: a credit-card detector must hold $\FPR<0.42\%$ merely to be right half the time at $80\%$ recall, whereas the same detector quality in mobile money or insurance has a trivially lenient budget. This also explains why using ROC-AUC (insensitive to $\pi$) for cards, $F_1$ for mobile money and MCC for insurance, as the original notebooks did, makes cross-sector numbers incomparable.
 
-\subsection{Stacked ensemble}
-Base learners $f_1,\dots,f_M$ (LR, RF, XGB) produce out-of-fold predictions $z_{im}=f_m^{(-\kappa(i))}(x_i)$ where $\kappa(i)$ is the fold of $i$; a logistic meta-learner is fit on $z_i=(z_{i1},\dots,z_{iM})$ \cite{wolpert1992stacked}. Resampling must be inside the fold loop so that OOF predictions do not see synthetic neighbours of the held-out point.
 
-\subsection{Explainability}\label{sec:xai}
-For a model $f$ and feature set $F$ ($|F|=M$), the Shapley attribution of feature $j$ at $x$ is
+\subsection{Expected cost, ROC slope and calibration}\label{sec:costroc}
+Let $s(X)$ be a score with class-conditional densities $f_1,f_0$ for fraud and legitimate cases, and threshold $t$. With $\TPR(t)=\int_t^\infty f_1$ and $\FPR(t)=\int_t^\infty f_0$, the expected cost over $n$ cases is
 \begin{equation}
-\phi_j(x)=\sum_{S\subseteq F\setminus\{j\}}\frac{|S|!\,(M-|S|-1)!}{M!}\big[f_{S\cup\{j\}}(x)-f_S(x)\big],
+\mathrm{Cost}(t)=n\big[\pi\,c_{FN}\,(1-\TPR(t))+(1-\pi)\,c_{FP}\,\FPR(t)\big].
 \end{equation}
-the unique allocation satisfying efficiency ($\sum_j\phi_j=f(x)-\E f$), symmetry, dummy and additivity \cite{lundberg2017shap}; TreeSHAP computes it exactly for tree ensembles in $O(TLD^2)$. LIME fits $g=\argmin_{g\in\mathcal G}\mathcal L(f,g,\pi_x)+\Omega(g)$ locally \cite{ribeiro2016lime}. For cross-sector comparison, importances are aggregated to the three concepts, $I_c=\sum_{j\in G_{kc}}\overline{|\phi_j|}$ normalised to sum to one per sector, and compared by Kendall's $\tau$ with a permutation test; raw feature importances are \emph{not} comparable across sectors because feature sets differ.
+\begin{proposition}[Iso-cost slope]\label{prop:isocost}
+An interior minimiser $t^\ast$ of $\mathrm{Cost}$ satisfies $\dfrac{f_1(t^\ast)}{f_0(t^\ast)}=\dfrac{(1-\pi)\,c_{FP}}{\pi\,c_{FN}}$, i.e.\ the ROC curve at the optimum has slope $\dfrac{d\TPR}{d\FPR}=\dfrac{(1-\pi)c_{FP}}{\pi c_{FN}}$. For a calibrated score this is the posterior threshold $\tau^\ast=c_{FP}/(c_{FP}+c_{FN})$ of Prop.~\ref{prop:cost}.
+\end{proposition}
+\begin{proof}
+$\mathrm{Cost}'(t)=n[\pi c_{FN}f_1(t)-(1-\pi)c_{FP}f_0(t)]$ since $\TPR'=-f_1$ and $\FPR'=-f_0$; setting it to zero gives the likelihood-ratio condition. The ROC slope is $\tfrac{d\TPR}{d\FPR}=\tfrac{-f_1}{-f_0}$. For calibrated $s=p$, Bayes gives $\tfrac{f_1}{f_0}(t)=\tfrac{1-\pi}{\pi}\tfrac{t}{1-t}$; equating with the slope above yields $t^\ast/(1-t^\ast)=c_{FP}/c_{FN}$, i.e.\ $t^\ast=c_{FP}/(c_{FP}+c_{FN})$. \end{proof}
+\noindent Prop.~\ref{prop:isocost} shows why the same detector has different optimal operating points per sector even at identical costs: the slope scales with the odds $(1-\pi)/\pi$, which is $191$ for cards against $0.82$ for mobile money. Thresholds are chosen on validation data and the realised cost is reported with a bootstrap interval.
 
+\paragraph{Calibration.} A score $p$ is calibrated if $\Prob(Y{=}1\mid p)=p$. We report the Brier score $\tfrac1n\sum_i(p_i-y_i)^2$ and the binned expected calibration error $\mathrm{ECE}=\sum_{b=1}^{B}\tfrac{n_b}{n}\,|\bar y_b-\bar p_b|$, where $\bar y_b,\bar p_b$ are the observed rate and mean score in bin $b$. Resampling and weighting shift scores by a known odds factor (Prop.~\ref{prop:weight}), so calibration is assessed \emph{after} applying the inverse correction; ranking metrics (AP, AUC) are unaffected by this monotone map, but thresholded and cost-based decisions are.
+
+\paragraph{Alert-budget metric.} Investigation capacity, not a threshold, is usually the binding constraint. For an alert budget of the top $\kappa$ fraction of cases we report $\mathrm{Prec@}\kappa=\tfrac{1}{\lceil\kappa n\rceil}\sum_{i\in\text{top-}\kappa}y_i$ and recall at $\kappa$; by Prop.~\ref{prop:prec} the achievable precision at a fixed $\kappa$ is again bounded by the sector's prevalence, so $\kappa$ is chosen per sector from operational capacity.
+
+\subsection{Resampled significance tests}
+For $K$ resampled train/test splits with train size $n_{\rm tr}$ and test size $n_{\rm te}$, the sample variance of the paired differences $\hat\sigma_d^2$ underestimates the variance of $\bar d$ because the estimates are positively correlated through overlapping training data. The corrected variance estimator is $(\tfrac1K+\tfrac{n_{\rm te}}{n_{\rm tr}})\hat\sigma_d^2$ \cite{nadeau2003inference}; with it the statistic $t=\bar d/\sqrt{(\tfrac1K+\tfrac{n_{\rm te}}{n_{\rm tr}})\hat\sigma_d^2}$ is compared to a Student $t_{K-1}$. For $K=20$ and a $70/15/15$ split ($n_{\rm te}/n_{\rm tr}=0.214$) the factor is $0.264$ versus $0.050$ for the naive test, i.e.\ standard errors are about $2.3$ times larger: significance claims made with the naive test on repeated splits are over-confident by that factor.
+
+%=======================================================================
 \section{Experimental Protocol}\label{sec:protocol}
 \paragraph{Splits.} CC and MM: chronological $70/15/15$ by transaction time (Sparkov's published train/test boundary is respected; it was previously merged and re-split at random). HI: grouped stratified split by patient identifier.
 
@@ -264,9 +759,9 @@ the unique allocation satisfying efficiency ($\sum_j\phi_j=f(x)-\E f$), symmetry
 \begin{equation}
 \Delta_m(b)=M\big(\hat h_m^{(b)}\big)-M\big(\hat h_{\rm target\text{-}only}^{(b)}\big),
 \end{equation}
-for a metric $M$; positive $\Delta$ indicates real transfer rather than label supervision alone.
+for a metric $M$; positive $\Delta$ indicates real transfer rather than label supervision alone, and negative $\Delta$ is reported as \emph{negative transfer} \cite{wang2019negative}.
 
-\paragraph{Model selection and thresholds.} No target-test labels, and for $b=0$ no target labels at all, are used for early stopping, checkpoint choice or thresholds. Hyper-parameters are selected by (a) source validation, (b) importance-weighted validation \cite{you2019dev}, or (c) for $b>0$, cross-validation within the $b$ labelled target examples. Thresholds follow Prop.~\ref{prop:cost}.
+\paragraph{Model selection and thresholds.} No target-test labels, and for $b=0$ no target labels at all, are used for early stopping, checkpoint choice or thresholds. Hyper-parameters are selected by (a) source validation, (b) importance-weighted validation \cite{you2019dev} with prior-corrected weights (since density-ratio weights are heavy-tailed under extreme prior mismatch), or (c) for $b>0$, cross-validation within the $b$ labelled target examples. Thresholds follow Prop.~\ref{prop:cost}.
 
 \paragraph{Metrics.} With confusion counts $TP,FP,TN,FN$ (MCC \cite{chicco2020mcc}; precision--recall analysis \cite{saito2015pr}):
 \begin{align}
@@ -275,16 +770,34 @@ F_1&=\frac{2TP}{2TP+FP+FN},\\
 \mathrm{AUC}&=\Prob\big(s(X^+)>s(X^-)\big)+\tfrac12\Prob\big(s(X^+)=s(X^-)\big),\\
 \mathrm{AP}&=\sum_n(R_n-R_{n-1})P_n.
 \end{align}
-Average precision (the step-wise sum) is reported instead of the trapezoidal area $\mathrm{auc}(R,P)$, which interpolates linearly between operating points and is optimistic. Because $\pi$ differs by two orders of magnitude between sectors, metrics are reported in \emph{all} sectors (not a different metric per sector), alongside the expected cost of Prop.~\ref{prop:cost} and precision at a fixed alert budget.
+Average precision (the step-wise sum) is reported instead of the trapezoidal area $\mathrm{auc}(R,P)$, which interpolates linearly between operating points and is optimistic. Metrics are reported in \emph{all} sectors (not a different metric per sector), as $\mathrm{AP}_{\rm skill}$ alongside MCC, expected cost, calibration error, and precision at a fixed alert budget.
 
-\paragraph{Statistics.} Over $K$ seeds/folds the paired difference $d_i=M_i^A-M_i^B$ has estimate $\bar d$ and sample variance $\hat\sigma_d^2$. Repeated resampling creates correlated estimates, so we use the corrected resampled $t$-statistic \cite{nadeau2003inference}
-\begin{equation}
-t=\frac{\bar d}{\sqrt{\big(\tfrac1K+\tfrac{n_{\rm te}}{n_{\rm tr}}\big)\hat\sigma_d^2}},
-\end{equation}
-with Wilcoxon signed-rank as a non-parametric check, DeLong's test for correlated AUCs \cite{delong1988auc}, bootstrap percentile intervals ($B=1000$), and Holm's step-down correction \cite{holm1979simple}: sort $p_{(1)}\le\dots\le p_{(m)}$ and reject $H_{(i)}$ while $p_{(i)}\le\alpha/(m-i+1)$. Comparisons are never pooled across heterogeneous transfer scenarios (a paired test over the six scenario scores treats unlike units as exchangeable); across-scenario summaries use the Friedman test with Nemenyi post-hoc \cite{demsar2006statistical}.
+\paragraph{Statistics.} Over $K$ seeds the paired difference $d_i=M_i^A-M_i^B$ is tested with the corrected resampled $t$-statistic (Section~\ref{sec:theory}), with Wilcoxon signed-rank as a non-parametric check, a Bayesian correlated $t$-test with a region of practical equivalence \cite{benavoli2017time}, DeLong's test for correlated AUCs \cite{delong1988auc}, bootstrap percentile intervals ($B=1000$), and Holm's step-down correction \cite{holm1979simple}: sort $p_{(1)}\le\dots\le p_{(m)}$ and reject $H_{(i)}$ while $p_{(i)}\le\alpha/(m-i+1)$. Comparisons are never pooled across heterogeneous transfer scenarios: a paired test over six scenario scores treats unlike units as exchangeable, and rank-based multi-dataset tests \cite{demsar2006statistical} have almost no power with three datasets, so cross-sector summaries are descriptive.
 
-\paragraph{Ablations and baselines.} (A1) remove alignment (raw positional features, shown for contrast); (A2) alignment without orientation $\sigma_j$; (A3) each adaptation loss removed; (A4) global vs.\ class-conditional MMD; (A5) label-shift-corrected source weights; (A6) CORAL \cite{sun2016coral}; (A7) gradient boosting with a domain indicator; (A8) tabular foundation models \cite{hollmann2025tabpfn} and FT-Transformer \cite{gorishniy2021revisiting} as strong few-label baselines.
 
+\paragraph{Directed scenarios and predictions.} Table~\ref{tab:scen} lists the six directed pairs with the label-shift floor of Table~\ref{tab:jsbound} and the qualitative prediction each is meant to test.
+\begin{table}[h]
+\centering
+\caption{Transfer scenarios, label-shift floor $\tfrac12\JS$, and what each tests.}
+\label{tab:scen}
+\scriptsize
+\begin{tabular}{@{}lcp{4.6cm}@{}}
+\toprule
+Pair $s\to t$ & Floor & Prediction under test \\
+\midrule
+CC$\to$MM & 0.166 & marginal DA harmful; prior correction needed \\
+CC$\to$HI & 0.115 & marginal DA harmful; HI amount concept empty \\
+MM$\to$CC & 0.166 & rare target positives; prior estimation fragile \\
+MM$\to$HI & 0.006 & DA benign; best chance of real transfer \\
+HI$\to$CC & 0.115 & tiny source ($n{=}2655$) to huge target: weak \\
+HI$\to$MM & 0.006 & DA benign; source-limited \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Ablations and baselines.} (A1) remove alignment (raw positional features, shown for contrast); (A2) alignment without orientation $\sigma_j$; (A3) each adaptation loss removed; (A4) global vs.\ class-conditional MMD; (A5) label-shift-corrected source weights; (A6) CORAL \cite{sun2016coral}; (A7) gradient boosting with a domain indicator and, as strong tabular references, XGBoost \cite{chen2016xgboost}, FT-Transformer \cite{gorishniy2021revisiting} and TabPFN \cite{hollmann2025tabpfn}; (A8) resampling vs.\ reweighting; (A9) HI without rule inputs and with a rule-only baseline, to measure circularity (Prop.~\ref{prop:circ}). Cross-sector tabular shift benchmarks \cite{gardner2023tableshift} motivate reporting no-transfer and gradient-boosting baselines in every table.
+
+%=======================================================================
 \section{Results}\label{sec:results}
 All numbers in this section are placeholders; the prior run is not reported because its pipeline fits target encodings, outlier caps, scalers and feature selection on the full dataset, computes a label-derived per-DRG rate before splitting, selects checkpoints and thresholds on target labels, and retains quasi-identifiers in the health-insurance features. Under those conditions reported health-insurance scores near $F_1\approx0.996$ are not interpretable (Prop.~\ref{prop:circ}).
 
@@ -295,18 +808,18 @@ All numbers in this section are placeholders; the prior run is not reported beca
 \small
 \begin{tabular}{@{}llccc@{}}
 \toprule
-Sector & Model & AP & MCC & Cost \\
+Sector & Model & $\mathrm{AP}_{\rm skill}$ & MCC & Cost \\
 \midrule
 CC & LR / RF / XGB / Stack & \TBD & \TBD & \TBD \\
 MM & LR / RF / XGB / Stack & \TBD & \TBD & \TBD \\
-HI & LR / RF / XGB / Stack & \TBD & \TBD & \TBD \\
+HI & LR / RF / XGB / Stack / TabPFN & \TBD & \TBD & \TBD \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{Transfer gain $\Delta_m(b)$ in AP over the target-only baseline; rows are directed pairs, columns label budgets.}
+\caption{Transfer gain $\Delta_m(b)$ in $\mathrm{AP}_{\rm skill}$ over the target-only baseline; rows are directed pairs, columns label budgets.}
 \label{tab:transfer}
 \small
 \begin{tabular}{@{}llcccc@{}}
@@ -315,19 +828,112 @@ Pair & Method & $b{=}0$ & 10 & 100 & 500 \\
 \midrule
 \multirow{3}{*}{CC$\to$MM} & DANN & \TBD & \TBD & \TBD & \TBD \\
  & LMMD & \TBD & \TBD & \TBD & \TBD \\
- & HEN & -- & \TBD & \TBD & \TBD \\
+ & Gated+L2-SP & -- & \TBD & \TBD & \TBD \\
 \multicolumn{6}{c}{\dots\ (all six directed pairs)} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent\textbf{Predictions to be confirmed or refuted.} (P1) DANN and global MMD underperform the target-only baseline for CC$\to$MM and CC$\to$HI, where Table~\ref{tab:jsbound} predicts an irreducible error floor, and are neutral for MM$\leftrightarrow$HI. (P2) Class-conditional LMMD and label-shift-corrected weights narrow this gap. (P3) Gains of HEN vanish once compared with the target-only baseline at equal $b$ unless the source representation is genuinely informative. (P4) Concept-level SHAP rankings agree more strongly between MM and HI than with CC.
+\noindent\textbf{Predictions to be confirmed or refuted.} (P1) DANN and global MMD underperform the target-only baseline for CC$\to$MM and CC$\to$HI, where Table~\ref{tab:jsbound} predicts an irreducible error floor, and are neutral for MM$\leftrightarrow$HI. (P2) Class-conditional LMMD and label-shift-corrected weights narrow this gap. (P3) Gains of the gated network vanish once compared with the target-only baseline at equal $b$ unless the source representation is genuinely informative (Prop.~\ref{prop:mix}). (P4) Concept-level SHAP rankings agree more strongly between MM and HI than with CC. (P5) Full-feature within-domain models weakly dominate concept-space models (Prop.~\ref{prop:bayes}). Each prediction is falsifiable, and refutations will be reported as negative transfer.
 
+%=======================================================================
 \section{Discussion and Threats to Validity}\label{sec:threats}
-\textbf{Synthetic data.} Two sectors are simulated; conclusions about relative method ranking may not transfer to production traffic, and simulators encode the generator's own fraud heuristics (e.g.\ balance-consistency features are close to label-defining in MoMTSim) \cite{jordon2022synthetic}. \textbf{Label validity (HI).} Rule labels measure tariff non-compliance, not adjudicated fraud, and are circular with billing features (Prop.~\ref{prop:circ}); the missing-drug-charge artefact in $r_5$ (Section~\ref{sec:labels}) must be removed or reported separately. \textbf{Small $n$.} Health insurance has $n=2655$; confidence intervals are wide and few-shot results are high-variance. \textbf{Concept map.} Group membership $G_{kc}$ and orientations $\sigma_j$ are expert-specified; sensitivity to these choices is an explicit ablation (A2). \textbf{Fairness and harm.} Flagging rates should be audited across region and facility type; thresholds should reflect investigation capacity.
+\textbf{Synthetic data.} Two sectors are simulated; conclusions about relative method ranking may not transfer to production traffic, and simulators encode the generator's own fraud heuristics (e.g.\ balance-consistency features are close to label-defining in PaySim-type generators) \cite{lopezrojas2016paysim,jordon2022synthetic,altman2023realistic}. The $54.8\%$ fraud rate of the MoMTSim extract is implausible for real mobile money and its generating scenario should be documented. \textbf{Label validity (HI).} Rule labels measure tariff non-compliance, not adjudicated fraud, and are circular with billing features (Prop.~\ref{prop:circ}); the missing-drug-charge artefact (Prop.~\ref{prop:missing}) must be removed or reported separately. \textbf{Small $n$.} Health insurance has $n=2655$; confidence intervals are wide and few-shot results are high-variance. \textbf{Concept map.} Group membership $G_{kc}$ and orientations $\sigma_j$ are expert-specified; sensitivity to these choices is an explicit ablation (A2). \textbf{Explanation validity.} Attributions on aligned features inherit the limits in \cite{kumar2020shapley,slack2020fooling}. \textbf{Fairness and regulation.} Flagging rates should be audited across region and facility type \cite{mehrabi2021bias}, protected attributes may exist in only one schema, and explanations may be required for automated decisions \cite{goodman2017gdpr}; thresholds should reflect investigation capacity. \textbf{Claims of priority.} The novelty statements in Section~\ref{sec:positioning} rest on the searches performed and should be re-verified in Scopus, IEEE Xplore and the ACM Digital Library.
 
+
+\subsection{Deployment, monitoring and governance}
+Cross-sector transfer is most valuable at \emph{cold start}, when a new product has few labels; deployment must therefore plan for the label arrival that follows. (i) \emph{Drift monitoring.} For each concept coordinate and for the score, the population stability index $\mathrm{PSI}=\sum_{i=1}^{B}(p_i-q_i)\ln(p_i/q_i)$ compares the binned reference distribution $p$ with the live distribution $q$; a persistent rise triggers recalibration. (ii) \emph{Prior tracking.} Because the posterior odds scale linearly with the prior ratio (Prop.~\ref{prop:saerens}), the live fraud rate estimated by the black-box estimator (Prop.~\ref{prop:bbse}) can be used to rescale the threshold without retraining, as long as $p(x\mid y)$ is stable. (iii) \emph{Label-delay awareness.} Feedback arrives on alerts first and on the rest later \cite{dalpozzolo2018realistic}; the target-only baseline of Section~\ref{sec:protocol} should be re-fitted as labels accumulate, and the transfer gain $\Delta_m(b)$ read as a function of $b$ shows the label count at which the transferred model stops being useful. (iv) \emph{Governance.} Decisions that significantly affect individuals may require explanation and human review \cite{goodman2017gdpr}; explanation logs should carry the concept-level attribution of Section~\ref{sec:xai}, and flag rates should be audited across region, facility type and age \cite{mehrabi2021bias}.
+
+\subsection{Data and code availability}
+The raw Sparkov and MoMTSim files are public, and the NHIA claims are available only under a data-use agreement; the repository therefore ships code, label audit scripts and manifests, not data. The corrected pipeline, its unit tests and the paper source are versioned in the project repository, and all reported numbers will be regenerated from raw data by one command before submission.
+
+\subsection{Limitations and future work}
+Three extensions follow naturally. First, \emph{learned} concept alignment (per-sector encoders trained jointly with a concept-consistency loss) could replace expert groups $G_{kc}$, at the price of the identifiability issues discussed in \cite{johansson2019support}. Second, \emph{unbalanced optimal transport} would relax the mass-preservation assumption that makes classical transport brittle under prior shift \cite{courty2017ot}. Third, \emph{real} mobile-money and card logs, when accessible under agreement, would test whether conclusions drawn from simulators \cite{lopezrojas2016paysim,azamuke2022momtsim} survive contact with production traffic.
+
+%=======================================================================
 \section{Conclusion}
-We gave a complete mathematical specification of a heterogeneous cross-sector fraud-transfer pipeline: an affine-invariant semantic alignment, a unified view of adversarial, kernel and fine-tuning adaptation, prior-aware decision theory, and an evaluation protocol free of the leakage channels that most threaten such studies. The label-shift analysis predicts concrete failure modes of invariant-representation methods for Ghana's sector pairs, which the corrected experiments will test.
+We gave a complete mathematical specification of a heterogeneous cross-sector fraud-transfer pipeline: an affine-invariant semantic alignment with a Bayes-risk accounting, a unified view of adversarial, kernel and fine-tuning adaptation, a closed-form label-shift analysis showing where invariance methods must fail, corrections and estimators that restore consistency, optimal target-label weighting, prior-aware decision theory with sector-specific operating budgets, and an evaluation protocol free of the leakage channels that most threaten such studies. The label-shift analysis predicts concrete failure modes of invariant-representation methods for Ghana's sector pairs, which the corrected experiments will test. If the predictions hold, the practical lesson is that cross-sector fraud transfer should be built on prior correction and target labels, not on distribution matching alone; if they fail, the negative result is itself informative.
+
+
+\appendices
+\section{Concept Tables and Open Design Issue}\label{app:concepts}
+Table~\ref{tab:concepts} gives the provisional assignment $G_{kc}$ and orientation $\sigma_j$ (all $+1$ unless noted). Orientations are expert hypotheses to be validated by the sign of the univariate association with fraud on the training partition; ablation A2 measures their effect. Identifier-like fields are excluded in every sector.
+\begin{table}[h]
+\centering
+\caption{Provisional concept groups (features after leakage removal).}
+\label{tab:concepts}
+\scriptsize
+\begin{tabular}{@{}p{1.1cm}p{2.2cm}p{2.3cm}p{2.1cm}@{}}
+\toprule
+Sector & Amount anomaly & Counterparty risk & Structural distance \\
+\midrule
+CC & amount, robust amount $z$, large-amount flag & merchant and category (out-of-fold TE) & card--merchant distance, unusual hour, city-size flag \\
+MM & amount, robust amount $z$ & destination zero-balance flag, agent proxy & balance-consistency error (orig., dest.), unusual hour \\
+HI & \emph{none admissible} (see below) & DRG volume, specialty & length of stay, month/weekday of attendance \\
+\bottomrule
+\end{tabular}
+\end{table}
+\paragraph{Open issue (health insurance).} The natural ``amount anomaly'' of a claim is its deviation from the approved tariff, which is exactly an input of the labelling rules (Prop.~\ref{prop:circ}); any such feature makes the HI task circular. We therefore set the HI amount concept to $0$ (empty group) in the main experiments and report an auxiliary analysis with a non-circular proxy (e.g.\ procedure-complexity-adjusted charge) and with labels from a source other than amount rules once available. This makes the HI concept space effectively two-dimensional, which the transfer-gain results must be read against.
+
+\section{Label Decision Flow}\label{app:labelflow}
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[font=\scriptsize, node distance=4mm,
+  blk/.style={draw, rounded corners=2pt, align=center, minimum width=3.2cm, minimum height=6mm, inner sep=2pt, fill=blue!6},
+  dec/.style={draw, diamond, aspect=2.6, align=center, inner sep=0pt, fill=yellow!14, minimum width=2.9cm},
+  res/.style={draw, rounded corners=2pt, align=center, minimum width=1.5cm, inner sep=2pt},
+  arr/.style={-{Stealth[length=1.5mm]}, thick}]
+  \node[blk] (a) {claim: $S,M,T$, G-DRG};
+  \node[dec, below=of a] (b) {tariff $A$\\ matched?};
+  \node[blk, below=7mm of b] (c) {evaluate $r_1,r_2,r_3$};
+  \node[dec, below=of c] (d) {$S,M,T$ all\\ observed?};
+  \node[blk, below=7mm of d] (e) {evaluate $r_4$};
+  \node[dec, below=of e] (f) {any $r_i=1$?};
+  \node[res, fill=red!12, below left=6mm and -2mm of f] (g) {$y=1$};
+  \node[res, fill=green!12, below right=6mm and -2mm of f] (h) {$y=0$};
+  \node[res, fill=gray!20, right=14mm of b] (na) {$y=\texttt{NaN}$\\ (unassessable)};
+  \draw[arr] (a)--(b); \draw[arr] (b)--node[right]{yes}(c); \draw[arr] (c)--(d);
+  \draw[arr] (d)--node[right]{yes}(e); \draw[arr] (e)--(f);
+  \draw[arr] (f)--node[above left]{yes}(g); \draw[arr] (f)--node[above right]{no}(h);
+  \draw[arr] (b.east)--node[above]{no}(na.west);
+  \draw[arr] (d.east) -- ++(1.9cm,0) |- node[pos=0.2,right]{no} (f.east);
+\end{tikzpicture}
+\caption{Decision flow of Algorithm~\ref{alg:labels}. Unmatched claims with no firing rule are excluded rather than labelled legitimate; missing $M$ disables $r_4$ instead of producing a fraud label. (For unmatched claims, $r_4$ is still evaluated in the implementation; the figure shows the main path.)}
+\label{fig:labelflow}
+\end{figure}
+
+\section{Configuration and Reproducibility}\label{app:config}
+\begin{table}[h]
+\centering
+\caption{Experimental configuration (values taken from the current code unless marked \TBD).}
+\label{tab:config}
+\scriptsize
+\begin{tabular}{@{}ll@{}}
+\toprule
+Item & Setting \\
+\midrule
+Encoder (DANN) & MLP $d\!\to\!128\!\to\!64$, BatchNorm, ReLU, dropout $0.3$ \\
+Heads & label: $64\!\to\!64\!\to\!1$; domain: $64\!\to\!64\!\to\!2$ \\
+Optimiser & Adam, lr $10^{-3}$, weight decay $10^{-4}$, cosine schedule \\
+Epochs $E$, $\gamma$ & $50$, $10$ \\
+Fine-tuning & lr $3\!\times\!10^{-4}$, L2-SP $\eta=$ \TBD (inner CV) \\
+MMD bandwidths & $\{0.5,1,2,4\}\times$ median pairwise distance \\
+Winsorising / TE & $q=0.99$; smoothing $m=20$, $5$-fold OOF \\
+Splits & $70/15/15$; chronological (CC, MM), grouped (HI) \\
+Seeds / budgets & $K=20$; $b\in\{10,50,100,500\}$ \\
+Bootstrap, $\alpha$ & $B=1000$, $0.05$ with Holm \\
+RNG & fixed seeds for \texttt{numpy}, \texttt{torch}, sampling (previously unset) \\
+\bottomrule
+\end{tabular}
+\end{table}
+All intermediate frames, manifests (sizes, prevalence, dropped columns, label audit) and per-seed result tables are written to disk and versioned with the code; every reported number is regenerated by a single command from raw data.
+
+\section{Proof Details}\label{app:proofs}
+\textbf{Proof of Prop.~\ref{prop:mmd}.} By the reproducing property, $\E_Pf=\langle f,\mu_P\rangle_{\mathcal H_k}$ with $\mu_P=\E_P\psi(u)$. Hence $\sup_{\|f\|\le1}(\E_Pf-\E_Qf)=\|\mu_P-\mu_Q\|_{\mathcal H_k}$, and squaring gives the identity. Expanding the norm, $\|\mu_P-\mu_Q\|^2=\E k(u,u')+\E k(v,v')-2\E k(u,v)$ with $u,u'\sim P$ and $v,v'\sim Q$ independent. For the unbiased estimator drop the $i=i'$ and $j=j'$ terms and normalise by $m(m-1)$ and $n(n-1)$; each retained term has expectation $\E k(u,u')$ or $\E k(v,v')$, so the estimator is unbiased. Injectivity of $P\mapsto\mu_P$ for characteristic kernels (Gaussian on $\R^d$) gives $\MMD=0\iff P=Q$ \cite{gretton2012kernel}.
+
+\textbf{Proof of Prop.~\ref{prop:labelshift} (consequence for $\lambda^\star$).} The sum bound is the cited theorem \cite{zhao2019invariant}. Because $\lambda^\star=\min_{h'}[\varepsilon_s(h')+\varepsilon_t(h')]$ is the smallest value that sum can take over $\Hspace$, the bound with $d_{\JS}(\mathcal D_s^Z,\mathcal D_t^Z)=0$ gives $\lambda^\star\ge\tfrac12 d_{\JS}(\mathcal D_s^Y,\mathcal D_t^Y)^2=\tfrac12\JS(\mathcal D_s^Y,\mathcal D_t^Y)$.
+
+\textbf{Convexity in Prop.~\ref{prop:mix}.} $\sqrt{f(\alpha)}=\|(\alpha/\sqrt\beta,(1-\alpha)/\sqrt{1-\beta})\|_2$ is the Euclidean norm of an affine function of $\alpha$, hence convex; adding the linear term $(1-\alpha)\Delta$ preserves convexity. Since $g'(\beta)=-\Delta<0$ and $g$ is convex, $g'$ is non-decreasing, so the unique zero of $g'$ lies to the right of $\beta$.
 
 \section*{Acknowledgment}
 The authors thank the National Health Insurance Authority for access to claims data (VERIFY permission statement).

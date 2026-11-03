@@ -44,3 +44,24 @@ NHIA data-use statement. Sparkov/MoMTSim bibliographic entries were written from
 ## Venue assessment (from review)
 Realistic after the fixes: IEEE Access or ACM TMIS (or ESWA/DSS). TKDE/TNNLS unlikely (DA components
 are standard; the concept map is a thin novelty). TIFS is a poor fit.
+
+## Update: 16-page draft, literature review and implementation structure
+* `main.tex` now has an expanded Related Work (7 subsections, 74 cited sources, two comparison tables),
+  an explicit novelty/positioning subsection, a Theory section (JS closed form, label-shift correction,
+  optimal target-label weighting, MMD bandwidth analysis, operating-point arithmetic, iso-cost slope),
+  an Implementation section (3 flowcharts, 6 algorithms, complexity table) and 4 appendices.
+* **Reference verification:** the web tools could not open arxiv/doi/publisher pages in this session, so every
+  entry was confirmed from search-result records only. Entries tagged `CHECK` in `references.bib` have gaps
+  (author lists, volume/pages, DOI). Check all 74 against Crossref before submission. Some one-line
+  "reviews" of theorems came from the reviewing agents' background knowledge; spot-check against the papers.
+* **Novelty claim** ("no prior cross-sector fraud transfer") rests on standard web searches only; re-run in
+  Scopus / IEEE Xplore / ACM DL before claiming it.
+* **HEN naming:** Zhu et al. (WWW 2020) is a *Hierarchical Explainable Network* for cross-market fraud
+  (behaviour sequences). The repo's "HEN" is a tabular attention-gated MLP; the paper calls it "HEN-style".
+* **HI concept issue:** the natural HI "amount anomaly" feature is a rule input, so it is circular; the draft sets
+  that concept to empty and flags it (Appendix A).
+* **Sowah 2019 reference:** the verified paper is the GSVM decision-support system (Hindawi, J. Engineering);
+  check that the tariff-compliance rules used for labelling actually come from it.
+* Not yet implemented in code: concept map, DANN/LMMD/gated training with prior correction, the evaluation
+  harness (Algorithms 4-7). Implemented and tested: labels, leakage guard, splits, preprocessing
+  (branch `claude/pipeline-fixes`).
