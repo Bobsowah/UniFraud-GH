@@ -1,31 +1,7 @@
-# Data files (too large to commit, download instructions are in README)
+__pycache__/
+*.pyc
+.pytest_cache/
 data/
-
-# Generated outputs - these are recreated by running the notebooks
 outputs/
 models/
 figures/
-
-# Python environment
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-
-# Jupyter notebook checkpoints
-.ipynb_checkpoints/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo

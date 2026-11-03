@@ -1,0 +1,144 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{zhao2019invariant}
+\citation{grinsztajn2022trees,chen2016xgboost}
+\citation{liu2008iforest}
+\citation{dalpozzolo2014creditcard}
+\citation{bendavid2010theory}
+\citation{ganin2016dann,tzeng2017adda}
+\citation{long2015dan,gretton2012kernel}
+\citation{sun2016coral}
+\citation{zhu2021dsan}
+\citation{panyang2010survey}
+\citation{zhao2019invariant}
+\citation{kaufman2012leakage}
+\citation{nadeau2003inference}
+\citation{you2019dev}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {II}Related Work}{1}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {III}Problem Formulation}{1}{section.3}\protected@file@percent }
+\newlabel{sec:problem}{{III}{1}{Problem Formulation}{section.3}{}}
+\citation{bendavid2010theory}
+\citation{sparkov,momtsim2024}
+\citation{sowah2019nhis}
+\citation{micci2001target}
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Dataset statistics (from the corrected pipeline's inventory; verified against notebook outputs).}}{2}{table.1}\protected@file@percent }
+\newlabel{tab:data}{{I}{2}{Dataset statistics (from the corrected pipeline's inventory; verified against notebook outputs)}{table.1}{}}
+\newlabel{eq:bendavid}{{1}{2}{Problem Formulation}{equation.3.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Data and Label Construction}{2}{section.4}\protected@file@percent }
+\newlabel{sec:labels}{{IV}{2}{Data and Label Construction}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Rule-generated labels}{2}{subsection.4.1}\protected@file@percent }
+\newlabel{eq:rules}{{2}{2}{Rule-generated labels}{equation.4.2}{}}
+\newlabel{prop:circ}{{1}{2}{Circularity of rule-generated labels}{proposition.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {V}Methodology}{2}{section.5}\protected@file@percent }
+\newlabel{sec:method}{{V}{2}{Methodology}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Leakage-free preprocessing}{2}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:prep}{{\mbox  {V-A}}{2}{Leakage-free preprocessing}{subsection.5.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Semantic concept alignment}{2}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:align}{{\mbox  {V-B}}{2}{Semantic concept alignment}{subsection.5.2}{}}
+\newlabel{eq:concept}{{4}{2}{Concept map}{equation.5.4}{}}
+\newlabel{prop:align}{{2}{2}{Affine invariance and orientation consistency}{proposition.2}{}}
+\citation{chawla2002smote,dalpozzolo2015calibrating}
+\citation{chawla2002smote}
+\citation{breiman2001rf}
+\citation{chen2016xgboost}
+\citation{liu2008iforest}
+\citation{ganin2016dann}
+\citation{zhao2019invariant}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Class imbalance and decision rule}{3}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:imbalance}{{\mbox  {V-C}}{3}{Class imbalance and decision rule}{subsection.5.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {V-C}0a}Weighted loss.}{3}{paragraph.5.3.0.1}\protected@file@percent }
+\newlabel{prop:weight}{{3}{3}{Weighting is a prior shift}{proposition.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {V-C}0b}SMOTE.}{3}{paragraph.5.3.0.2}\protected@file@percent }
+\newlabel{prop:cost}{{4}{3}{Cost-sensitive Bayes threshold}{proposition.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}Within-domain models}{3}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Domain adaptation}{3}{subsection.5.5}\protected@file@percent }
+\newlabel{sec:da}{{\mbox  {V-E}}{3}{Domain adaptation}{subsection.5.5}{}}
+\newlabel{eq:unified}{{7}{3}{Domain adaptation}{equation.5.7}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {V-E}0a}DANN.}{3}{paragraph.5.5.0.1}\protected@file@percent }
+\newlabel{prop:grl}{{5}{3}{Gradient reversal realises the saddle point}{proposition.5}{}}
+\newlabel{prop:labelshift}{{6}{3}{Label shift limits invariant representations \cite {zhao2019invariant}}{proposition.6}{}}
+\citation{gretton2012kernel}
+\citation{zhu2021dsan}
+\citation{li2018l2sp}
+\citation{wolpert1992stacked}
+\citation{lundberg2017shap}
+\citation{ribeiro2016lime}
+\citation{you2019dev}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Lower bound on $\varepsilon _s+\varepsilon _t$ under perfect marginal alignment, $\tfrac  12\JS  (\mathrm  {Bern}(\pi _s),\mathrm  {Bern}(\pi _t))$.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:jsbound}{{II}{4}{Lower bound on $\varepsilon _s+\varepsilon _t$ under perfect marginal alignment, $\tfrac 12\JS (\mathrm {Bern}(\pi _s),\mathrm {Bern}(\pi _t))$}{table.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {V-E}0b}Subdomain (class-conditional) MMD.}{4}{paragraph.5.5.0.2}\protected@file@percent }
+\newlabel{prop:mmd}{{7}{4}{MMD properties \cite {gretton2012kernel}}{proposition.7}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {V-E}0c}HEN (attention-gated pre-train/fine-tune).}{4}{paragraph.5.5.0.3}\protected@file@percent }
+\newlabel{eq:l2sp}{{12}{4}{HEN (attention-gated pre-train/fine-tune)}{equation.5.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-F}}Stacked ensemble}{4}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-G}}Explainability}{4}{subsection.5.7}\protected@file@percent }
+\newlabel{sec:xai}{{\mbox  {V-G}}{4}{Explainability}{subsection.5.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Experimental Protocol}{4}{section.6}\protected@file@percent }
+\newlabel{sec:protocol}{{VI}{4}{Experimental Protocol}{section.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0a}Splits.}{4}{paragraph.6.0.0.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0b}Regimes.}{4}{paragraph.6.0.0.2}\protected@file@percent }
+\citation{chicco2020mcc}
+\citation{saito2015pr}
+\citation{nadeau2003inference}
+\citation{delong1988auc}
+\citation{holm1979simple}
+\citation{demsar2006statistical}
+\citation{sun2016coral}
+\citation{hollmann2025tabpfn}
+\citation{gorishniy2021revisiting}
+\citation{jordon2022synthetic}
+\bibstyle{IEEEtran}
+\bibdata{references}
+\bibcite{zhao2019invariant}{1}
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0c}Model selection and thresholds.}{5}{paragraph.6.0.0.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0d}Metrics.}{5}{paragraph.6.0.0.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0e}Statistics.}{5}{paragraph.6.0.0.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\numberline {\mbox  {VI-}0f}Ablations and baselines.}{5}{paragraph.6.0.0.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Results}{5}{section.7}\protected@file@percent }
+\newlabel{sec:results}{{VII}{5}{Results}{section.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Within-domain results (R1), test set, mean $\pm $ 95\% bootstrap CI over seeds.}}{5}{table.3}\protected@file@percent }
+\newlabel{tab:within}{{III}{5}{Within-domain results (R1), test set, mean $\pm $ 95\% bootstrap CI over seeds}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Transfer gain $\Delta _m(b)$ in AP over the target-only baseline; rows are directed pairs, columns label budgets.}}{5}{table.4}\protected@file@percent }
+\newlabel{tab:transfer}{{IV}{5}{Transfer gain $\Delta _m(b)$ in AP over the target-only baseline; rows are directed pairs, columns label budgets}{table.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Discussion and Threats to Validity}{5}{section.8}\protected@file@percent }
+\newlabel{sec:threats}{{VIII}{5}{Discussion and Threats to Validity}{section.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Conclusion}{5}{section.9}\protected@file@percent }
+\bibcite{grinsztajn2022trees}{2}
+\bibcite{chen2016xgboost}{3}
+\bibcite{liu2008iforest}{4}
+\bibcite{dalpozzolo2014creditcard}{5}
+\bibcite{bendavid2010theory}{6}
+\bibcite{ganin2016dann}{7}
+\bibcite{tzeng2017adda}{8}
+\bibcite{long2015dan}{9}
+\bibcite{gretton2012kernel}{10}
+\bibcite{sun2016coral}{11}
+\bibcite{zhu2021dsan}{12}
+\bibcite{panyang2010survey}{13}
+\bibcite{kaufman2012leakage}{14}
+\bibcite{nadeau2003inference}{15}
+\bibcite{you2019dev}{16}
+\bibcite{sparkov}{17}
+\bibcite{momtsim2024}{18}
+\bibcite{sowah2019nhis}{19}
+\bibcite{micci2001target}{20}
+\bibcite{chawla2002smote}{21}
+\bibcite{dalpozzolo2015calibrating}{22}
+\bibcite{breiman2001rf}{23}
+\bibcite{li2018l2sp}{24}
+\bibcite{wolpert1992stacked}{25}
+\bibcite{lundberg2017shap}{26}
+\bibcite{ribeiro2016lime}{27}
+\bibcite{chicco2020mcc}{28}
+\bibcite{saito2015pr}{29}
+\bibcite{delong1988auc}{30}
+\bibcite{holm1979simple}{31}
+\bibcite{demsar2006statistical}{32}
+\bibcite{hollmann2025tabpfn}{33}
+\bibcite{gorishniy2021revisiting}{34}
+\bibcite{jordon2022synthetic}{35}
+\@writefile{toc}{\contentsline {section}{References}{6}{section*.3}\protected@file@percent }
+\gdef \@abspage@last{6}

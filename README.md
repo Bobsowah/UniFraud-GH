@@ -39,6 +39,31 @@ UniFraud-GH/
 
 ---
 
+## Leakage-safe pipeline (v2, in progress)
+
+The original notebooks 01-03 fit target encoding, outlier caps, scalers and feature selection on the
+full dataset before splitting, labelled *missing* drug charges as fraud, and kept label-defining
+billing columns in the health-insurance features. The `unifraud/` package replaces that logic:
+
+| Module | Purpose |
+|---|---|
+| `unifraud/labels_hi.py` | HI rule labels; missing data is a data-quality flag, not fraud; untariffed claims are `NaN` |
+| `unifraud/leakage.py` | registry of rule-derived / identifier columns + single-feature-AUC tripwire |
+| `unifraud/splits.py` | chronological (CC, MM) and patient-grouped (HI) splits |
+| `unifraud/preprocess.py` | train-only fit: winsorise, robust-scale, out-of-fold target encoding, time features |
+| `scripts/prepare_data.py` | end-to-end preparation -> `outputs/clean/*.csv` + manifests |
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests            # unit tests (synthetic data)
+python scripts/prepare_data.py --data data --out outputs/clean
+```
+
+Downstream notebooks (04-08) have **not** yet been migrated to `outputs/clean`; results from the old
+notebooks should not be cited. See `paper/REVISION_NOTES.md` (branch `claude/paper-draft`) for the full defect list.
+
+---
+
 ## Datasets
 
 The raw data files are **not included in this repository** due to size and licensing. Download them and place them in the `data/` folder.
