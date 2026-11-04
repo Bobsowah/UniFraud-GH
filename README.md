@@ -21,7 +21,8 @@ Financial fraud in Ghana operates across multiple sectors simultaneously. Frauds
 UniFraud-GH/
 |
 |-- 00_config.py                        <- Shared configuration (paths, hyperparameters, constants)
-|-- 01_health_insurance_labeling.ipynb  <- Fraud labelling using G-DRG tariff rules
+|-- 01_health_insurance_labeling.ipynb  <- Fraud labelling using G-DRG tariff rules (legacy rule-based labels)
+|-- 01c_health_insurance_claims.ipynb   <- NHIS claims with PROVIDED fraud labels (use this if you have the NHIS workbook)
 |-- 01b_EDA.ipynb                       <- Exploratory data analysis across all three domains
 |-- 02_preprocessing.ipynb              <- 7-step preprocessing pipeline
 |-- 03_feature_engineering.ipynb        <- Domain-specific and universal feature engineering
@@ -30,6 +31,7 @@ UniFraud-GH/
 |-- 07_ensemble_evaluation.ipynb        <- 5 experiments + stacking ensemble + statistical tests
 |-- 08_explainability.ipynb             <- SHAP and LIME explainability
 |
+|-- tools/deidentify_nhis.py            <- Removes names/DOB/real IDs from the NHIS workbook (run locally)
 |-- requirements.txt                    <- Python dependencies
 |-- data/                               <- (not committed) Raw datasets (see below)
 |-- outputs/                            <- Generated CSVs and results (auto-created)
@@ -47,7 +49,22 @@ The raw data files are **not included in this repository** due to size and licen
 |---|---|---|
 | Credit Card (Sparkov) | Kaggle: kartik2112/fraud-detection | `fraudTrain.csv`, `fraudTest.csv` |
 | Mobile Money (MoMTSim) | IEEE Access 2024 / GitHub | `MoMTSim_transactions.csv` |
-| Health Insurance (NHIA) | Ghana NHIA (provided) | `GD.csv`, `ReData1_100.csv` ... `ReData5_1000.csv` |
+| Health Insurance (NHIA, legacy rule-based labels) | Ghana NHIA (provided) | `GD.csv`, `ReData1_100.csv` ... `ReData5_1000.csv` |
+| Health Insurance (NHIS claims, provided labels) | NHIS workbook (provided; **not public**) | `NHIS_claims_deidentified.csv` (made from `NHIS_CLAIM_DATASET.xlsx`, see below) |
+
+### Health insurance claims: privacy and preparation
+
+The NHIS workbook contains patient names, dates of birth and member numbers. **Never commit it, and never commit anything derived from it that still carries identifiers.** `data/` is git-ignored, and `.gitignore` also blocks `*.xlsx` and `NHIS*`.
+
+Create the de-identified file locally (the original never leaves your machine):
+
+```
+python tools/deidentify_nhis.py "C:/path/to/NHIS_CLAIM_DATASET.xlsx"
+```
+
+This drops names, DOB and CCC, replaces member/folder numbers with random surrogate IDs, derives `age_at_admission` and `length_of_stay`, and recodes the label so that `fraud_label = 1` means fraud (the workbook column `LEGITIMATE=1, FRAUDULENT=0` is the opposite). Then run `01c_health_insurance_claims.ipynb` and keep `HI_LABEL_SOURCE = "provided"` in `00_config.py`.
+
+Things to know about these labels: fraud is rare (87 of 9,721 claims, 0.9%); 77 of the 87 sit in two outpatient G-DRG codes; ICD-10 is missing on 60 of the 87 fraudulent claims and on no legitimate claim, so that flag is excluded by default (`HI_USE_MISSING_ICD_FLAG`) and results should be reported with and without it; 50 members have claims of both classes, so split by `member_id` (see `outputs/health_insurance_groups.csv`), not by row. With 87 positives a single split is very noisy: use repeated grouped cross-validation and report intervals.
 
 To download the credit card dataset using the Kaggle CLI:
 ```
@@ -90,7 +107,7 @@ Run the notebooks **in order**. Each notebook saves its outputs to the `outputs/
 
 | Step | Notebook | Description |
 |---|---|---|
-| 1 | `01_health_insurance_labeling.ipynb` | Labels HI fraud using G-DRG tariff compliance |
+| 1 | `01_health_insurance_labeling.ipynb` **or** `01c_health_insurance_claims.ipynb` | Labels HI fraud from G-DRG tariff rules (legacy), **or** loads the NHIS claims with provided labels |
 | 2 | `01b_EDA.ipynb` | Exploratory analysis of all three datasets |
 | 3 | `02_preprocessing.ipynb` | Cleans and prepares all three datasets |
 | 4 | `03_feature_engineering.ipynb` | Builds domain features and selects top 25 per domain |
@@ -217,7 +234,7 @@ Because the three datasets have very different fraud rates, different primary me
 |---|---|---|
 | Credit Card | ROC-AUC | 0.52% fraud rate makes F1 unreliable |
 | Mobile Money | F1 | Near-balanced dataset |
-| Health Insurance | MCC | ~40% fraud rate; MCC is robust to label imbalance |
+| Health Insurance | MCC (rule-based labels, ~40% fraud) / PR-AUC and recall at a review budget (provided labels, 0.9% fraud) | prevalence differs by labelling; with 0.9% fraud ROC-AUC alone is misleading |
 
 ---
 

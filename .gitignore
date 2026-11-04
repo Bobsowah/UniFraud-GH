@@ -29,3 +29,9 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Patient data: never commit (names, DOB, member numbers)
+*.xlsx
+*.xls
+NHIS*
+!tools/deidentify_nhis.py

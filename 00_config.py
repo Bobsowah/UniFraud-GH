@@ -50,8 +50,25 @@ REDATA_FILES = [
     os.path.join(DATA_DIR, "ReData5_1000.csv"),
 ]
 
+# Health Insurance - NHIS claims with provided fraud labels (de-identified copy).
+# Build it from the original NHIS workbook: names/DOB/real IDs removed, member/folder
+# IDs replaced by random surrogates, fraud_label = 1 for FRAUDULENT. NEVER commit it.
+HI_CLAIMS_CSV = os.path.join(DATA_DIR, "NHIS_claims_deidentified.csv")
+
+# Which HI labelling is in use:
+#   "provided"   -> labels come from the NHIS workbook (use 01_health_insurance_claims.ipynb)
+#   "rule_based" -> labels derived from G-DRG tariff rules (01_health_insurance_labeling.ipynb);
+#                   billing-derived features then leak the label and are removed in NB05/07/08.
+HI_LABEL_SOURCE = "provided"
+
+# In the NHIS workbook, ICD-10 is missing for 60 of the 87 fraudulent claims and for NO legitimate claim.
+# A "has_icd10" flag therefore acts as a near-rule for most fraud (grouped-CV AP about 0.58 with it,
+# about 0.04 without it). Default False so the headline results are not driven by it; report both.
+HI_USE_MISSING_ICD_FLAG = False
+
 # --- Intermediate and Output Files -------------------------------------------
 HI_LABELED_CSV   = os.path.join(OUTPUT_DIR, "health_insurance_labeled.csv")
+HI_GROUPS_CSV    = os.path.join(OUTPUT_DIR, "health_insurance_groups.csv")   # row_id, member_id, date (for grouped / temporal splits)
 CC_PROCESSED_CSV = os.path.join(OUTPUT_DIR, "credit_card_processed.csv")
 MM_PROCESSED_CSV = os.path.join(OUTPUT_DIR, "mobile_money_processed.csv")
 HI_PROCESSED_CSV = os.path.join(OUTPUT_DIR, "health_insurance_processed.csv")
