@@ -157,3 +157,59 @@ DOMAIN_NAMES = {
 }
 
 print("Config loaded. BASE_DIR:", BASE_DIR)
+
+# --- Leak-safe evaluation protocol --------------------------------------------
+# Every processed/feature CSV carries a `split` column ('train' / 'val' / 'test') assigned in NB02 BEFORE any
+# statistic is fitted. Scalers, encoders, quantile thresholds and selected features are fitted on 'train' rows only.
+#   Credit Card  : temporal. fraudTrain -> earliest 82% train, latest 18% val ; fraudTest (later period) -> test
+#   Mobile Money : temporal by simulation step (earliest 70% train, next 15% val, last 15% test)
+#   Health Ins.  : grouped by member (no member in two splits), stratified by label
+SPLIT_COL = "split"
+FEW_SHOT_LABELS = [5, 20, 50]       # labelled target FRAUD cases (plus 10x legitimate rows) for few-shot transfer in NB06
+REVIEW_BUDGET   = 0.05               # "recall at budget": share of test records an investigator can review
+
+def make_split(y, order=None, groups=None, test_mask=None, seed=None):
+    """Return a Series of 'train'/'val'/'test'. Priority: test_mask+order (temporal), order, groups, stratified random."""
+    import numpy as _np, pandas as _pd
+    seed = RANDOM_STATE if seed is None else seed
+    y = _pd.Series(_np.asarray(y)).reset_index(drop=True)
+    n = len(y); out = _np.full(n, 'train', dtype=object)
+    if order is not None:
+        o = _pd.Series(_np.asarray(order)).reset_index(drop=True)
+        if test_mask is not None:
+            tm = _np.asarray(test_mask, dtype=bool); out[tm] = 'test'
+            idx = _np.where(~tm)[0]; idx = idx[_np.argsort(o.values[idx], kind='stable')]
+            out[idx[int(len(idx) * (1 - VAL_RATIO / (TRAIN_RATIO + VAL_RATIO))):]] = 'val'
+        else:
+            idx = _np.argsort(o.values, kind='stable')
+            out[idx[int(n * (TRAIN_RATIO + VAL_RATIO)):]] = 'test'
+            out[idx[int(n * TRAIN_RATIO):int(n * (TRAIN_RATIO + VAL_RATIO))]] = 'val'
+    elif groups is not None:
+        from sklearn.model_selection import StratifiedGroupKFold
+        g = _np.asarray(groups); folds = StratifiedGroupKFold(n_splits=7, shuffle=True, random_state=seed)
+        parts = [te for _, te in folds.split(_np.zeros(n), y, g)]
+        out[parts[0]] = 'test'; out[parts[1]] = 'val'     # 1/7 each ~ 14% / 14%
+    else:
+        from sklearn.model_selection import train_test_split
+        tv, te = train_test_split(_np.arange(n), test_size=TEST_RATIO, stratify=y, random_state=seed)
+        tr, va = train_test_split(tv, test_size=VAL_RATIO / (TRAIN_RATIO + VAL_RATIO), stratify=y.iloc[tv], random_state=seed)
+        out[te] = 'test'; out[va] = 'val'
+    return _pd.Series(out, name=SPLIT_COL)
+
+def split_frames(df):
+    """df with `split` column -> X_train, X_val, X_test, y_train, y_val, y_test (numeric features only)."""
+    import numpy as _np
+    sp = df[SPLIT_COL]
+    X = df.drop(columns=[TARGET_COL, SPLIT_COL]).select_dtypes(include=_np.number).fillna(0)
+    y = df[TARGET_COL].astype(int)
+    f = lambda k: (X[sp == k].reset_index(drop=True), y[sp == k].reset_index(drop=True))
+    (Xtr, ytr), (Xva, yva), (Xte, yte) = f('train'), f('val'), f('test')
+    return Xtr, Xva, Xte, ytr, yva, yte
+
+def recall_at_budget(y_true, scores, budget=None):
+    """Share of all frauds found when only the top `budget` fraction of records (by score) is reviewed."""
+    import numpy as _np
+    budget = REVIEW_BUDGET if budget is None else budget
+    y_true = _np.asarray(y_true); k = max(1, int(round(budget * len(y_true))))
+    top = _np.argsort(-_np.asarray(scores), kind='stable')[:k]
+    return float(y_true[top].sum() / max(1, y_true.sum()))

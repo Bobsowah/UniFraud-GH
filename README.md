@@ -161,7 +161,8 @@ All figures are saved automatically to the `figures/` folder when each notebook 
 ### Notebook 06 - Domain Adaptation
 | File | Description |
 |---|---|
-| `domain_adaptation_heatmaps.png` | Heatmaps of MCC and ROC-AUC for all 6 source-target transfer scenarios across DANN, HEN, and Subdomain Adaptation |
+| `domain_adaptation_heatmaps.png` | Zero-shot PR-AUC lift over chance for all 6 source-target scenarios, per method |
+| `domain_adaptation_label_efficiency.png` | PR-AUC lift versus number of labelled target frauds (zero-shot, few-shot, full), against a Target-only RF |
 
 ### Notebook 07 - Ensemble Evaluation
 | File | Description |
@@ -193,16 +194,16 @@ All figures are generated fresh each time the notebooks are run and are not comm
 Trains a feature extractor that learns domain-invariant representations by simultaneously optimising a fraud classifier and a domain discriminator with a gradient reversal layer. The adversarial training forces the encoder to produce features that are indistinguishable across source and target domains.
 
 ### Subdomain Adaptation with MMD
-Clusters transactions into subdomains and minimises Maximum Mean Discrepancy (MMD) between source and target cluster distributions. This is more fine-grained than global domain alignment and handles the heterogeneous fraud patterns across sectors.
+Minimises the Maximum Mean Discrepancy (MMD) between source and target feature distributions in the encoder's hidden layer, using unlabelled target rows.
 
 ### HEN - Hierarchical Ensemble Network
-Uses an attention mechanism to weight features by relevance before encoding them, pre-trains on the labelled source domain, then fine-tunes on the (partially labelled) target domain. The attention weights provide built-in interpretability.
+Uses an attention mechanism to weight features by relevance before encoding them, pre-trains on the labelled source domain, then (in the few-shot regime) fine-tunes on a small labelled target sample. The attention weights provide built-in interpretability.
 
 ---
 
 ## Semantic Feature Alignment
 
-A key contribution of this project is the semantic alignment layer that maps domain-specific column names to three universal fraud concepts before cross-domain transfer:
+A key contribution of this project is the semantic alignment layer that maps domain-specific column names to three universal fraud concepts (plus features that share a name in both domains) before cross-domain transfer:
 
 - **Amount Anomaly**: transaction size relative to population distribution
 - **Counterparty Risk**: properties of the recipient account, merchant, or healthcare provider
@@ -218,7 +219,7 @@ All detailed results are saved to `outputs/all_experiment_results.csv` after run
 
 - **Experiment 1**: Within-domain baseline
 - **Experiment 2**: Direct cross-domain transfer (no adaptation)
-- **Experiment 3**: Domain adaptation (DANN, Subdomain, HEN)
+- **Experiment 3**: Domain adaptation, zero-shot rows (DANN, Subdomain, HEN; few-shot and full are in notebook 06)
 - **Experiment 4**: Universal feature identification
 - **Experiment 5**: Stacking ensemble
 
@@ -226,15 +227,31 @@ Statistical validation uses paired t-tests (alpha = 0.05) comparing the ensemble
 
 ---
 
-## Evaluation Metrics
+## Evaluation Protocol and Metrics
 
-Because the three datasets have very different fraud rates, different primary metrics are used:
+**Splits are fixed in notebook 02, before anything is fitted**, and stored in a `split` column that every later notebook uses:
 
-| Domain | Primary Metric | Rationale |
+| Domain | Split | Why |
 |---|---|---|
-| Credit Card | ROC-AUC | 0.52% fraud rate makes F1 unreliable |
-| Mobile Money | F1 | Near-balanced dataset |
-| Health Insurance | MCC (rule-based labels, ~40% fraud) / PR-AUC and recall at a review budget (provided labels, 0.9% fraud) | prevalence differs by labelling; with 0.9% fraud ROC-AUC alone is misleading |
+| Credit Card | Temporal: `fraudTest` (later period) is the test set; the last 18% of `fraudTrain` by time is validation | a random split lets the model see the future and the same cardholders |
+| Mobile Money | Temporal by simulation `step` (70 / 15 / 15) | same reason; the fraud rate drifts over time in MoMTSim, so the test rate differs from the train rate |
+| Health Insurance | Grouped by `member_id` (no member in two splits), stratified by label | 50 members have claims of both classes |
+
+Scalers, imputers, outlier caps, target encodings, quantile thresholds, DRG fraud rates and feature selection are all fitted on **train rows only**. Identifiers (card number, transaction number, account names) and outcome fields (`isFlaggedFraud`, `isSuccessful`, `isUnauthorizedOverdraft`) are dropped.
+
+**Metrics.** PR-AUC is the headline metric in every domain (fraud is rare everywhere, so accuracy and ROC-AUC flatter the model). Next to it, **recall at a review budget** (`REVIEW_BUDGET = 5%` of records in `00_config.py`) answers the operational question: if investigators can review the top 5% of claims, what share of the fraud do they find? Compare PR-AUC with the test fraud rate (that is chance level), not with 0.5. In notebooks 05 and 07 F1 / MCC use a threshold tuned on the same domain's validation rows; in notebook 06 they use the budget operating point (top 5% flagged), so no target labels set a threshold.
+
+**Domain adaptation (notebook 06)** reports three separate regimes:
+
+| Regime | Target labels used | Reference |
+|---|---|---|
+| zero-shot | none (DANN / MMD may use unlabelled target features) | Source-only model without adaptation |
+| few-shot | 5 / 20 / 50 target fraud cases (+10x legitimate), 3 random draws | Target-only RF trained on the same labels |
+| full | all target train rows | Target-only RF (ceiling) |
+
+Model selection uses source validation only and the target test rows are used once, so a transfer method only "works" if it beats Source-only (zero-shot) or Target-only RF (few-shot).
+
+**Health insurance caveat.** ICD-10 is missing on 60 of the 87 fraudulent claims and on no legitimate one, so the `has_icd10` flag is excluded by default; report results with `HI_USE_MISSING_ICD_FLAG = True` as well. With 87 positives (about 13 in the test split) a single split is very noisy: quote intervals from repeated grouped cross-validation.
 
 ---
 
